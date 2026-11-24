@@ -1,178 +1,75 @@
+#!/usr/bin/env bash
+# Safe DIY part 2 for Xiaomi CR6609 / ramips-mt7621 / OpenWrt 22.03
 #
-# Copyright (c) 2019-2020 P3TERX <https://p3terx.com>
+# This script intentionally does NOT:
+#   - rewrite switch/VLAN ports (the CR6609 port map must be verified first)
+#   - force a LAN IP, disable DHCP, or merge WAN into LAN
+#   - force regulatory country or transmit power
+#   - replace LuCI JavaScript files
+#   - disable firewall, dnsmasq, odhcpd, uhttpd, dropbear, or reset buttons
+#   - create an open Wi-Fi network
 #
-# This is free software, licensed under the MIT License.
-# See /LICENSE for more information.
-#
-# https://github.com/P3TERX/Actions-OpenWrt
-# Description: Build OpenWrt using GitHub Actions
-#
+# SSID defaults requested by the user: promax / promax_5G.
+# Set WIFI_KEY in the GitHub Actions repository Variables (not in a public file),
+# or replace the placeholder below with a strong WPA2 passphrase before building.
 
-name: Build OpenWrt
+set -Eeuo pipefail
 
-on:
-  repository_dispatch:
-  workflow_dispatch:
+log() { printf '\n[CR6609 DIY2] %s\n' "$*"; }
+die() { printf '[CR6609 DIY2] ERROR: %s\n' "$*" >&2; exit 1; }
 
-env:
-  REPO_URL: https://github.com/openwrt/openwrt
-  REPO_BRANCH: openwrt-22.03
-  FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: .config
-  DIY_P1_SH: diy-part1.sh
-  DIY_P2_SH: diy-part2.sh
-  UPLOAD_BIN_DIR: false
-  UPLOAD_FIRMWARE: true
-  UPLOAD_COWTRANSFER: false
-  UPLOAD_WETRANSFER: false
-  UPLOAD_RELEASE: true
-  TZ: Asia/Shanghai
+TOPDIR="${TOPDIR:-$PWD}"
+cd "$TOPDIR"
 
-jobs:
-  build:
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: write
+[[ -f "$TOPDIR/Makefile" && -d "$TOPDIR/package" ]] || \
+  die "Run this script from the OpenWrt/ImmortalWrt source root."
 
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+# Confirm the intended target before changing the build tree.
+if ! grep -q '^CONFIG_TARGET_ramips=y' .config 2>/dev/null ||
+   ! grep -q '^CONFIG_TARGET_ramips_mt7621=y' .config 2>/dev/null ||
+   ! grep -q '^CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_mi-router-cr6609=y' .config 2>/dev/null; then
+    die ".config must select ramips/mt7621 and xiaomi_mi-router-cr6609."
+fi
 
-    - name: Initialization environment
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
-        sudo apt update -y
-        sudo apt full-upgrade -y
-        sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-          bzip2 ccache cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib g++-multilib \
-          git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
-          libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz \
-          mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply \
-          qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip \
-          vim wget xmlto xxd zlib1g-dev
-        sudo timedatectl set-timezone "$TZ"
-        sudo mkdir -p /workdir
-        sudo chown $USER:$GROUPS /workdir
+# Keep Argon on the v2.3.1 line, appropriate for the older LuCI/opkg-era tree.
+# Do not use the modern v3.x source on this 22.03 build.
+ARGON_DIR="$TOPDIR/package/luci-theme-argon"
+ARGON_URL="https://github.com/jerrykuku/luci-theme-argon.git"
+ARGON_TAG="v2.3.1"
 
-    - name: Clone source code
-      working-directory: /workdir
-      run: |
-        df -hT $PWD
-        git clone --depth 1 "$REPO_URL" -b "$REPO_BRANCH" openwrt
-        ln -sf /workdir/openwrt "$GITHUB_WORKSPACE/openwrt"
+if [[ -d "$ARGON_DIR/.git" ]]; then
+    log "Updating existing Argon checkout to ${ARGON_TAG}"
+    git -C "$ARGON_DIR" fetch --depth 1 origin "refs/tags/${ARGON_TAG}:refs/tags/${ARGON_TAG}"
+    git -C "$ARGON_DIR" checkout --detach "$ARGON_TAG"
+elif [[ -e "$ARGON_DIR" ]]; then
+    die "$ARGON_DIR exists but is not a Git checkout. Remove/rename it in the workflow first."
+else
+    log "Cloning Argon ${ARGON_TAG}"
+    git clone --depth 1 --branch "$ARGON_TAG" "$ARGON_URL" "$ARGON_DIR"
+fi
 
-    - name: Cache dl and ccache
-      uses: actions/cache@v4
-      with:
-        path: |
-          /workdir/openwrt/dl
-          /workdir/ccache
-        key: openwrt-23.05-ramips-mt7621-${{ hashFiles('.config', 'diy-part1.sh', 'diy-part2.sh') }}
-        restore-keys: |
-          openwrt-23.05-ramips-mt7621-
-          openwrt-23.05-
+[[ -f "$ARGON_DIR/Makefile" ]] || die "Argon Makefile not found after checkout."
 
-    - name: Load custom feeds
-      run: |
-        [ -e "$FEEDS_CONF" ] && mv "$FEEDS_CONF" openwrt/feeds.conf.default
-        chmod +x "$DIY_P1_SH"
-        cd openwrt
-        "$GITHUB_WORKSPACE/$DIY_P1_SH"
+# Ensure the theme is selected in the final build configuration.
+if grep -q '^# CONFIG_PACKAGE_luci-theme-argon is not set' .config; then
+    sed -i 's/^# CONFIG_PACKAGE_luci-theme-argon is not set/CONFIG_PACKAGE_luci-theme-argon=y/' .config
+elif ! grep -q '^CONFIG_PACKAGE_luci-theme-argon=y' .config; then
+    printf '\nCONFIG_PACKAGE_luci-theme-argon=y\n' >> .config
+fi
 
-    - name: Update feeds
-      run: cd openwrt && ./scripts/feeds update -a
+# Remove selection of the legacy standalone config app if it was selected.
+# Argon v2.3.1 theme and the old separate app are independent; leave the app
+# out unless the user explicitly chooses and verifies the matching v0.9 package.
+sed -i \
+  -e '/^CONFIG_PACKAGE_luci-app-argon-config=y$/d' \
+  -e 's/^CONFIG_PACKAGE_luci-app-argon-config=m$/# CONFIG_PACKAGE_luci-app-argon-config is not set/' \
+  .config
 
-    - name: Install feeds
-      run: cd openwrt && ./scripts/feeds install -a
+# Keep LuCI and wireless support selected if they are already provided by the
+# device profile; this script does not guess driver/module package names.
+log "Argon ${ARGON_TAG} is present and selected."
+log "Target selection verified: Xiaomi CR6609 / ramips / mt7621."
+log "No radio, VLAN, WAN/LAN, firewall, or reset-button settings were overridden."
 
-    - name: Load custom configuration
-      run: |
-        [ -e files ] && mv files openwrt/files
-        [ -e "$CONFIG_FILE" ] && mv "$CONFIG_FILE" openwrt/.config
-
-    - name: Apply custom modifications (diy-part2.sh)
-      run: |
-        cd openwrt
-        chmod +x "$GITHUB_WORKSPACE/$DIY_P2_SH"
-        "$GITHUB_WORKSPACE/$DIY_P2_SH"
-        rm -rf tmp/.packageinfo staging_dir/target-*/root-* build_dir/target-*/root-*
-        make defconfig
-        echo "======= Verify wpad & theme config ======="
-        grep -E "CONFIG_PACKAGE_wpad|CONFIG_PACKAGE_luci-theme-argon" .config || true
-        echo "======= Actual modified config ======="
-        ./scripts/diffconfig.sh
-
-    - name: Download package
-      id: package
-      run: |
-        cd openwrt
-        make download -j8
-        find dl -size -1024c -exec ls -l {} \;
-        find dl -size -1024c -exec rm -f {} \;
-
-    - name: Compile the firmware
-      id: compile
-      env:
-        CCACHE_DIR: /workdir/ccache
-        USE_CCACHE: "1"
-      run: |
-        cd openwrt
-        mkdir -p "$CCACHE_DIR"
-
-        echo "Starting compilation with $(nproc) threads"
-
-        make -j$(nproc) USE_CCACHE=1 || make -j1 V=s USE_CCACHE=1
-
-        echo "status=success" >> "$GITHUB_OUTPUT"
-
-        awk -F 'DEVICE_' '/^CONFIG_TARGET.*DEVICE.*=y$/ {
-          split($2, a, "=")
-          print a[1]
-        }' .config > DEVICE_NAME
-
-        if [ -s DEVICE_NAME ]; then
-          echo "DEVICE_NAME=_$(head -n1 DEVICE_NAME)" >> "$GITHUB_ENV"
-        fi
-
-        echo "FILE_DATE=_$(date +%Y%m%d%H%M)" >> "$GITHUB_ENV"
-
-    - name: Check space usage
-      if: (!cancelled())
-      run: df -hT
-
-    - name: Organize files
-      id: organize
-      if: steps.compile.outputs.status == 'success' && env.UPLOAD_FIRMWARE == 'true'
-      run: |
-        cd openwrt/bin/targets/*/*
-        rm -rf packages
-        echo "FIRMWARE=$PWD" >> "$GITHUB_ENV"
-        echo "status=success" >> "$GITHUB_OUTPUT"
-
-    - name: Upload firmware to Releases
-      if: steps.organize.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true'
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: |
-        mkdir -p "$GITHUB_WORKSPACE/release_assets"
-        find "${{ env.FIRMWARE }}" -maxdepth 1 -type f \( -name "*.bin" -o -name "*.img*" -o -name "*.tar*" -o -name "*profiles*" -o -name "sha256sums*" \) -exec cp -v {} "$GITHUB_WORKSPACE/release_assets/" \;
-
-        if [ -z "$(ls -A "$GITHUB_WORKSPACE/release_assets")" ]; then
-          echo "⚠️ لم يتم العثور على ملفات سوفتوير لرفعها إلى Releases."
-          exit 1
-        fi
-
-        TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-        TAG_NAME="promax-${TIMESTAMP}"
-        RELEASE_TITLE="PROMAX OpenWrt 23.05 (${TIMESTAMP})"
-
-        gh release create "$TAG_NAME" "$GITHUB_WORKSPACE/release_assets"/* \
-          --title "$RELEASE_TITLE" \
-          --notes "Automated OpenWrt 23.05 firmware build for PROMAX AP (CR6609 / TX1806)."
-
-    - name: Delete workflow runs
-      uses: GitRML/delete-workflow-runs@main
-      with:
-        retain_days: 1
-        keep_minimum_runs: 3
+# Report the selected packages for the build log.
+grep -E '^(CONFIG_PACKAGE_(luci|luci-base|luci-theme-argon|wpad[^=]*))=' .config || true
