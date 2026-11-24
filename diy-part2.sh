@@ -114,7 +114,6 @@ fi
 
 # ==========================================
 # 4. Install and configure Argon v2.3.1
-# ImmortalWrt 22.03 - Xiaomi CR6609
 # ==========================================
 
 echo "=========================================="
@@ -125,141 +124,62 @@ ARGON_DIR="package/luci-theme-argon"
 ARGON_REPO="https://github.com/jerrykuku/luci-theme-argon.git"
 ARGON_TAG="v2.3.1"
 
-# ------------------------------------------
-# 1. Download exact Argon version
-# ------------------------------------------
-
-if [ -d "$ARGON_DIR/.git" ]; then
-
-    echo "Argon source already exists."
-
-    git -C "$ARGON_DIR" fetch --depth 1 origin \
-        "refs/tags/$ARGON_TAG:refs/tags/$ARGON_TAG"
-
-    git -C "$ARGON_DIR" checkout --detach "$ARGON_TAG"
-
-else
-
-    echo "Downloading Argon $ARGON_TAG..."
-
+# Check existing source
+if [ ! -d "$ARGON_DIR/.git" ]; then
     rm -rf "$ARGON_DIR"
 
-    git clone \
-        --depth 1 \
-        --branch "$ARGON_TAG" \
-        "$ARGON_REPO" \
-        "$ARGON_DIR"
-
+    git clone --depth 1 --branch "$ARGON_TAG" \
+        "$ARGON_REPO" "$ARGON_DIR"
+else
+    echo "Argon source already exists."
 fi
 
-# ------------------------------------------
-# 2. Verify source
-# ------------------------------------------
+# Fetch exact release tag
+git -C "$ARGON_DIR" fetch --force --depth 1 origin \
+    "refs/tags/$ARGON_TAG:refs/tags/$ARGON_TAG"
 
+# Resolve exact tag commit
+TAG_COMMIT=$(git -C "$ARGON_DIR" rev-parse \
+    "refs/tags/$ARGON_TAG^{commit}") || exit 1
+
+# Checkout exact release
+git -C "$ARGON_DIR" checkout --force --detach "$TAG_COMMIT"
+
+# Verify commit
+CURRENT_COMMIT=$(git -C "$ARGON_DIR" rev-parse HEAD)
+
+if [ "$CURRENT_COMMIT" != "$TAG_COMMIT" ]; then
+    echo "ERROR: Argon version verification failed!"
+    exit 1
+fi
+
+# Verify Makefile
 if [ ! -f "$ARGON_DIR/Makefile" ]; then
-    echo "ERROR: Argon Makefile not found!"
+    echo "ERROR: Argon Makefile missing!"
     exit 1
 fi
 
-if ! git -C "$ARGON_DIR" describe --tags --exact-match 2>/dev/null | grep -qx "$ARGON_TAG"; then
-    echo "ERROR: Wrong Argon version!"
-    exit 1
-fi
+echo "Argon v2.3.1 verified successfully."
 
-echo "Argon version verified: $ARGON_TAG"
+# Enable Argon
+sed -i '/^CONFIG_PACKAGE_luci-theme-argon=/d' .config
+echo 'CONFIG_PACKAGE_luci-theme-argon=y' >> .config
 
-# ------------------------------------------
-# 3. Configure package
-# ------------------------------------------
+# Disable separate Argon config package
+sed -i '/^CONFIG_PACKAGE_luci-app-argon-config=/d' .config
+echo '# CONFIG_PACKAGE_luci-app-argon-config is not set' >> .config
 
-if [ -f .config ]; then
-
-    sed -i '/^CONFIG_PACKAGE_luci-theme-argon=/d' .config
-
-    echo 'CONFIG_PACKAGE_luci-theme-argon=y' >> .config
-
-    echo "Argon package enabled."
-
-fi
-
-# ------------------------------------------
-# 4. Keep old config plugin disabled
-# ------------------------------------------
-
-if [ -f .config ]; then
-
-    sed -i '/^CONFIG_PACKAGE_luci-app-argon-config=/d' .config
-
-    echo '# CONFIG_PACKAGE_luci-app-argon-config is not set' >> .config
-
-fi
-
-# ------------------------------------------
-# 5. Install custom Argon logo
-# ------------------------------------------
-
-ARGON_SVG=""
-
-if [ -f "$GITHUB_WORKSPACE/argon.svg" ]; then
-    ARGON_SVG="$GITHUB_WORKSPACE/argon.svg"
-elif [ -f "argon.svg" ]; then
-    ARGON_SVG="argon.svg"
-fi
-
-if [ -n "$ARGON_SVG" ]; then
-
-    mkdir -p package/base-files/files/www/luci-static/argon/img
-
-    cp "$ARGON_SVG" \
-       package/base-files/files/www/luci-static/argon/img/argon.svg
-
-    echo "Custom Argon logo installed."
-
-fi
-
-# ------------------------------------------
-# 6. Install custom background
-# ------------------------------------------
-
-BG_IMG=""
-
-if [ -f "$GITHUB_WORKSPACE/bg.jpg" ]; then
-    BG_IMG="$GITHUB_WORKSPACE/bg.jpg"
-elif [ -f "bg.jpg" ]; then
-    BG_IMG="bg.jpg"
-fi
-
-if [ -n "$BG_IMG" ]; then
-
-    mkdir -p package/base-files/files/www/luci-static/argon/background
-
-    cp "$BG_IMG" \
-       package/base-files/files/www/luci-static/argon/background/bg.jpg
-
-    echo "Custom Argon background installed."
-
-fi
-
-# ------------------------------------------
-# 7. Set Argon as default theme
-# ------------------------------------------
-
+# Set default theme
 mkdir -p package/base-files/files/etc/uci-defaults
 
 cat <<'EOF' > package/base-files/files/etc/uci-defaults/96-enable-argon
 #!/bin/sh
 
-# Set Argon as default LuCI theme
 if [ -d /www/luci-static/argon ]; then
-
     uci -q set luci.main.mediaurlbase='/luci-static/argon'
-
     uci commit luci
-
-    # Clear LuCI cache
     rm -rf /tmp/luci-indexcache
     rm -rf /tmp/luci-modulecache
-
 fi
 
 exit 0
@@ -267,19 +187,7 @@ EOF
 
 chmod +x package/base-files/files/etc/uci-defaults/96-enable-argon
 
-# ------------------------------------------
-# 8. Final verification
-# ------------------------------------------
-
-if [ ! -f "$ARGON_DIR/Makefile" ]; then
-    echo "ERROR: Argon installation verification failed!"
-    exit 1
-fi
-
-echo "=========================================="
-echo " Argon v2.3.1 configured successfully!"
-echo "=========================================="
-
+echo "Argon configuration completed successfully."
 # ==========================================
 # 5. تعديل wireless.js (dBm حتى 40 + Current power + 160 MHz)
 # ==========================================
