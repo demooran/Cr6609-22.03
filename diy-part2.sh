@@ -630,7 +630,7 @@ do
 </div>
 <footer class="mobile-hide" style="text-wrap: auto">
 	<div class="footer-content" style="display: flex; flex-wrap: wrap; gap: 0.5em; justify-content: end;">
-		<span style="color: #5e72e4; font-weight: 500;">Powered by Promax-NEt</span>
+		<span style="color: #5e72e4; font-weight: 500;">Powered by Ahosam-wifi-770528863</span>
 	</div>
 </footer>
 </main>
