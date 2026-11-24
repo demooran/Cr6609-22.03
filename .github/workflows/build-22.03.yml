@@ -1,4 +1,4 @@
-name: Build ImmortalWrt 22.03 - Xiaomi CR6609
+name: Build OpenWrt 22.03 - Xiaomi CR6609
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  SOURCE_REPO: https://github.com/immortalwrt/immortalwrt.git
+  SOURCE_REPO: https://github.com/openwrt/openwrt.git
   SOURCE_BRANCH: openwrt-22.03
   DEVICE_TARGET: ramips
   DEVICE_SUBTARGET: mt7621
@@ -84,7 +84,7 @@ jobs:
           echo "Disk space after installing dependencies:"
           df -h /
 
-      - name: Clone ImmortalWrt 22.03
+      - name: Clone OpenWrt 22.03
         shell: bash
         run: |
           set -euxo pipefail
@@ -93,7 +93,7 @@ jobs:
             "${SOURCE_REPO}" openwrt
 
           cd openwrt
-          echo "ImmortalWrt revision:"
+          echo "OpenWrt revision:"
           git log -1 --oneline
 
       - name: Copy configuration and custom scripts
@@ -189,7 +189,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ImmortalWrt-22.03-Xiaomi-CR6609
+          name: OpenWrt-22.03-Xiaomi-CR6609
           path: firmware-output/
           if-no-files-found: warn
           retention-days: 14
