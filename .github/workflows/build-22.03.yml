@@ -1,0 +1,178 @@
+name: Build ImmortalWrt 22.03 - Xiaomi CR6609
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".config"
+      - "diy-part1.sh"
+      - "diy-part2.sh"
+      - ".github/workflows/build-22.03.yml"
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cr6609-immortalwrt-22-03-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  SOURCE_REPO: https://github.com/immortalwrt/immortalwrt.git
+  SOURCE_BRANCH: openwrt-22.03
+  DEVICE_TARGET: ramips
+  DEVICE_SUBTARGET: mt7621
+
+jobs:
+  build:
+    name: Build CR6609 firmware
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout build configuration
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        uses: easimon/maximize-build-space@v10
+        with:
+          root-reserve-mb: 8192
+          swap-size-mb: 4096
+          remove-dotnet: "true"
+          remove-android: "true"
+          remove-haskell: "true"
+          remove-codeql: "true"
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ack antlr3 asciidoc autoconf automake autopoint \
+            binutils bison build-essential bzip2 ccache clang cmake \
+            cpio curl device-tree-compiler ecj fastjar flex g++ gawk \
+            gcc-multilib gettext git gperf haveged help2man \
+            intltool libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
+            libmpc-dev libmpfr-dev libncurses-dev libncurses5-dev \
+            libpython3-dev libreadline-dev libssl-dev libtool \
+            libyaml-dev lld llvm make mkisofs nano ninja-build \
+            p7zip p7zip-full patch pkgconf python3 python3-pip \
+            python3-ply python3-docutils python3-pyelftools qemu-utils \
+            re2c rsync scons squashfs-tools subversion swig texinfo \
+            uglifyjs upx-ucl unzip wget xmlto xxd zlib1g-dev zstd
+
+      - name: Clone ImmortalWrt 22.03
+        shell: bash
+        run: |
+          git clone --depth 1 --single-branch \
+            --branch "${SOURCE_BRANCH}" \
+            "${SOURCE_REPO}" openwrt
+
+          cd openwrt
+          echo "ImmortalWrt revision:"
+          git log -1 --oneline
+
+      - name: Copy configuration and custom scripts
+        shell: bash
+        run: |
+          test -s .config || {
+            echo "::error::.config is missing or empty in the repository root."
+            exit 1
+          }
+
+          test -f diy-part1.sh || {
+            echo "::error::diy-part1.sh is missing."
+            exit 1
+          }
+
+          test -f diy-part2.sh || {
+            echo "::error::diy-part2.sh is missing."
+            exit 1
+          }
+
+          cp .config openwrt/.config
+          chmod +x diy-part1.sh diy-part2.sh
+
+      - name: Run DIY part 1
+        working-directory: openwrt
+        shell: bash
+        run: |
+          bash "$GITHUB_WORKSPACE/diy-part1.sh"
+
+      - name: Update and install feeds
+        working-directory: openwrt
+        shell: bash
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Run DIY part 2
+        working-directory: openwrt
+        shell: bash
+        run: |
+          bash "$GITHUB_WORKSPACE/diy-part2.sh"
+
+      - name: Configure build
+        working-directory: openwrt
+        shell: bash
+        run: |
+          # Confirm that the saved configuration targets the CR660x family.
+          grep -q  ^CONFIG_TARGET_ramips=y  .config || {
+            echo "::error::.config does not enable CONFIG_TARGET_ramips."
+            exit 1
+          }
+
+          grep -q  ^CONFIG_TARGET_ramips_mt7621=y  .config || {
+            echo "::error::.config does not enable CONFIG_TARGET_ramips_mt7621."
+            exit 1
+          }
+
+          make defconfig
+
+          echo "Selected target configuration:"
+          grep -E  ^CONFIG_TARGET_(ramips|ramips_mt7621)|^CONFIG_TARGET_DEVICE  .config || true
+
+      - name: Build firmware
+        working-directory: openwrt
+        shell: bash
+        run: |
+          # Use two parallel jobs to reduce the risk of running out of RAM.
+          make -j2 V=s
+
+      - name: Prepare firmware files
+        if: always()
+        working-directory: openwrt
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/firmware-output"
+
+          if [ -d "bin/targets/${DEVICE_TARGET}/${DEVICE_SUBTARGET}" ]; then
+            cp -a "bin/targets/${DEVICE_TARGET}/${DEVICE_SUBTARGET}/." \
+              "$GITHUB_WORKSPACE/firmware-output/"
+          fi
+
+          if [ -d "$GITHUB_WORKSPACE/firmware-output" ]; then
+            cd "$GITHUB_WORKSPACE/firmware-output"
+            find . -type f \( -name  *.bin  -o -name  *.img  -o -name  *.tar.gz  \
+              -o -name  *.manifest  -o -name  sha256sums  \) -print
+            find . -type f \( -name  *.bin  -o -name  *.img  -o -name  *.tar.gz  \
+              -o -name  *.manifest  \) -print0 |
+              sort -z |
+              xargs -0 -r sha256sum > SHA256SUMS
+          fi
+
+      - name: Upload firmware artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImmortalWrt-22.03-Xiaomi-CR6609
+          path: firmware-output/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Show build failure hint
+        if: failure()
+        shell: bash
+        run: |
+          echo "Build failed. Open the failed step above and inspect its first error."
+          echo "Common causes: wrong .config target, incompatible package feed, or an error in diy-part1.sh / diy-part2.sh."
