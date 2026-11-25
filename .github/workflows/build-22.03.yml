@@ -91,6 +91,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          cp .config openwrt/.config
           test -s .config
           test -f diy-part1.sh
           test -f diy-part2.sh
