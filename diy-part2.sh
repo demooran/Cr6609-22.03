@@ -13,8 +13,8 @@
 # ==========================================
 # 1. تعيين اسم الجهاز (Hostname)
 # ==========================================
-sed -i 's/OpenWrt/PROMAX/g' package/base-files/files/bin/config_generate
-sed -i 's/ImmortalWrt/PROMAX/g' package/base-files/files/bin/config_generate
+sed -i 's/OpenWrt/hosam.AX/g' package/base-files/files/bin/config_generate
+sed -i 's/ImmortalWrt/hosam.AX/g' package/base-files/files/bin/config_generate
 
 # ==========================================
 # 2. إعدادات الواي فاي الافتراضية (تفعيل الراديو)
@@ -68,7 +68,7 @@ if uci get wireless.default_radio1 >/dev/null 2>&1; then
 fi
 
 # 7. ضبط منافذ الجسر br-lan (lan1, lan2, lan3, wan) وتعطيل IPv6 على الجهاز
-for dev in $(uci show network 2>/dev/null | grep "=device" | cut -d'.' -f2 | cut -d'=' -f1); do
+for dev in $(uci show network 2>/dev/null | grep "=device" | cut -d . -f2 | cut -d = -f1); do
     if [ "$(uci -q get network.$dev.name)" = "br-lan" ]; then
         uci -q delete network.$dev.ports
         for p in lan1 lan2 lan3 wan; do
@@ -103,9 +103,23 @@ if [ -f .config ] && ! grep -q "CONFIG_PACKAGE_luci-theme-argon=" .config; then
     echo "CONFIG_PACKAGE_luci-theme-argon=y" >> .config
 fi
 
-mkdir -p package/base-files/files/www/luci-static/argon/background/
 if [ -f "$GITHUB_WORKSPACE/bg.jpg" ]; then
-    cp "$GITHUB_WORKSPACE/bg.jpg" package/base-files/files/www/luci-static/argon/background/bg.jpg
+    BG_UPDATED=0
+    for BG_DIR in \
+        "package/luci-theme-argon/htdocs/luci-static/argon/background" \
+        "feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/background" \
+        "package/luci-theme-argon/root/www/luci-static/argon/background" \
+        "feeds/luci/themes/luci-theme-argon/root/www/luci-static/argon/background"
+    do
+        if [ -d "$BG_DIR" ]; then
+            cp -f "$GITHUB_WORKSPACE/bg.jpg" "$BG_DIR/bg.jpg"
+            BG_UPDATED=1
+        fi
+    done
+    if [ "$BG_UPDATED" -eq 0 ]; then
+        mkdir -p package/base-files/files/www/luci-static/argon/background/
+        cp -f "$GITHUB_WORKSPACE/bg.jpg" package/base-files/files/www/luci-static/argon/background/bg.jpg
+    fi
     echo "✅ تم نسخ خلفية الثيم بنجاح."
 else
     echo "⚠️ تحذير: لم يتم العثور على ملف bg.jpg."
@@ -136,23 +150,25 @@ WIRELESS_JS=$(find feeds/luci package -name "wireless.js" -path "*network*" 2>/d
 
 if [ -n "$WIRELESS_JS" ] && [ -f "$WIRELESS_JS" ]; then
     echo "تم العثور على wireless.js في: $WIRELESS_JS"
-    sed -i "s/\r//g" "$WIRELESS_JS"
+    sed -i 's/\r//g' "$WIRELESS_JS"
 
     if grep -q "for (var i = 0; i < pwrlist.length; i++)" "$WIRELESS_JS"; then
-        sed -i "s|for (var i = 0; i < pwrlist.length; i++)|for (var i = 27; i <= 38; i++) { pwrlist.push({dbm: i, mw: Math.round(Math.pow(10, (i-30)/10) * 1000)}); }; pwrlist = pwrlist.filter((v,i,a)=>a.findIndex(t=>(t.dbm===v.dbm))===i); for (var i = 0; i < pwrlist.length; i++)|g" "$WIRELESS_JS"
+        sed -i 's|for (var i = 0; i < pwrlist.length; i++)|for (var i = 27; i <= 40; i++) { pwrlist.push({dbm: i, mw: Math.round(Math.pow(10, (i-30)/10) * 1000)}); }; pwrlist = pwrlist.filter((v,i,a)=>a.findIndex(t=>(t.dbm===v.dbm))===i); for (var i = 0; i < pwrlist.length; i++)|g' "$WIRELESS_JS"
         echo "✅ تمت إضافة قيم dBm (حتى 40) بنجاح."
     fi
 
-    sed -i "s/i<=38/i<=40/g; s/i <= 38/i <= 40/g" "$WIRELESS_JS"
+    sed -i 's/i<=38/i<=40/g; s/i <= 38/i <= 40/g' "$WIRELESS_JS"
 
-    awk '{
+    awk '
+    {
         gsub(/this\.powerval=this\.wifiNetwork\?this\.wifiNetwork\.getTXPower\(\):null/, "this.powerval=(this.wifiNetwork?(uci.get(\"wireless\",this.wifiNetwork.getWifiDeviceName(),\"txpower\")||this.wifiNetwork.getTXPower()):null)");
         gsub(/this\.powerval = this\.wifiNetwork \? this\.wifiNetwork\.getTXPower\(\) : null/, "this.powerval = (this.wifiNetwork ? (uci.get(\"wireless\", this.wifiNetwork.getWifiDeviceName(), \"txpower\") || this.wifiNetwork.getTXPower()) : null)");
         gsub(/radioNet\.getTXPower\(\)/, "(uci.get(\"wireless\", radioNet.getWifiDeviceName(), \"txpower\") || \"36\")");
         print
-    }' "$WIRELESS_JS" > "$WIRELESS_JS.tmp" && mv "$WIRELESS_JS.tmp" "$WIRELESS_JS"
+    }
+    ' "$WIRELESS_JS" > "$WIRELESS_JS.tmp" && mv "$WIRELESS_JS.tmp" "$WIRELESS_JS"
 
-    sed -i "s/htmodelist\.VHT160/true/g; s/htmodelist\.HE160/true/g" "$WIRELESS_JS"
+    sed -i 's/htmodelist\.VHT160/true/g; s/htmodelist\.HE160/true/g' "$WIRELESS_JS"
     echo "✅ تم تعديل wireless.js وتحديث Current power بنجاح."
 else
     echo "⚠️ لم يتم العثور على wireless.js."
@@ -192,7 +208,6 @@ if [ -f "$MENU_SYS_JSON" ]; then
     { print }
     ' "$MENU_SYS_JSON" > "$MENU_SYS_JSON.tmp" && mv "$MENU_SYS_JSON.tmp" "$MENU_SYS_JSON"
 
-    # إزالة أي فاصلة زائدة تسبق قوس إغلاق الكائن } لضمان سلامة صياغة JSON
     sed -i ':a;N;$!ba;s/,\s*\n\s*}/\n}/g' "$MENU_SYS_JSON" 2>/dev/null || true
     echo "✅ تم حذف تبويبات SSH و SSH-Keys و HTTP(S) Access من قائمة LuCI بنجاح."
 fi
@@ -244,7 +259,7 @@ fi
 # ==========================================
 cat << 'EOF' > package/base-files/files/etc/uci-defaults/99-fix-wifi-power
 #!/bin/sh
-uci -q batch << EOB
+uci -q batch << 'EOB'
 set wireless.@wifi-device[0].disabled=0
 set wireless.@wifi-device[1].disabled=0
 set wireless.@wifi-device[0].country='PA'
@@ -414,7 +429,7 @@ return view.extend({
 		]);
 
 		fs.exec('/sbin/firstboot', [ '-r', '-y' ]);
-		ui.awaitReconnect('192.168.1.21', '192.168.1.1', 'openwrt.lan');
+		ui.awaitReconnect('192.168.1.20', '192.168.1.1', 'openwrt.lan');
 	},
 
 	handleSysupgrade: function(storage_size, has_rootfs_data, ev) {
@@ -457,7 +472,7 @@ return view.extend({
 			if (!is_valid || is_too_big) {
 				body.push(E('p', { 'class': 'alert-message' }, [
 					res[2].stderr ? res[2].stderr : '',
-					res[2].stderr ? E( br ) : '',
+					res[2].stderr ? E('br') : '',
 					_('The uploaded image file does not contain a supported format. Make sure that you choose the generic image format for your platform.')
 				]));
 			}
@@ -496,7 +511,7 @@ return view.extend({
 								E('p', { 'class': 'spinning' }, _('The system is flashing the new firmware image now. Do not power off the device!'))
 							]);
 							fs.exec('/sbin/sysupgrade', args);
-							ui.awaitReconnect('192.168.1.21', '192.168.1.1', 'openwrt.lan');
+							ui.awaitReconnect('192.168.1.20', '192.168.1.1', 'openwrt.lan');
 						})
 					}, [ _('Continue') ])
 				])
@@ -563,55 +578,48 @@ EOF
 fi
 
 # ==========================================
-# 11. تخصيص الفوتر (Footer) لثيم Argon (Ahosam-wifi-770528863)
+# 11. تخصيص الفوتر (Footer) لثيم Argon (footer.htm و footer_login.htm)
 # ==========================================
 for FOOTER_FILE in \
     "package/base-files/files/usr/lib/lua/luci/view/themes/argon/footer.htm" \
     "package/luci-theme-argon/luasrc/view/themes/argon/footer.htm" \
-    "package/luci-theme-argon/ucode/template/themes/argon/footer.ut" \
-    "feeds/luci/themes/luci-theme-argon/luasrc/view/themes/argon/footer.htm" \
-    "feeds/luci/themes/luci-theme-argon/ucode/template/themes/argon/footer.ut"
+    "feeds/luci/themes/luci-theme-argon/luasrc/view/themes/argon/footer.htm"
 do
     if [ -f "$FOOTER_FILE" ]; then
-        cat << 'EOF' > "$FOOTER_FILE"
-<%#
- Argon theme footer
--%>
-</div>
-<footer class="mobile-hide" style="text-wrap: auto">
-	<div class="footer-content" style="display: flex; flex-wrap: wrap; gap: 0.5em; justify-content: end;">
-		<span style="color: #5e72e4; font-weight: 500;">Ahosam-wifi-770528863</span>
+        {
+            head -n 20 "$FOOTER_FILE"
+            cat << 'EOF'
+<footer class="mobile-hide" style="position: fixed; bottom: 8px; right: 16px; left: auto; z-index: 10;">
+	<div>
+		<a href="https://wa.me/+967770528863" style="color: #5e72e4; font-weight: 500;">Powered by Ahosam-WIFI | للتواصل : 770528863</a>
+		<ul class="breadcrumb pull-right" id="modemenu" style="display:none"></ul>
 	</div>
 </footer>
-</main>
-</div>
-</div>
-</body>
-</html>
 EOF
+            tail -n +29 "$FOOTER_FILE"
+        } > "${FOOTER_FILE}.tmp" && mv "${FOOTER_FILE}.tmp" "$FOOTER_FILE"
         echo "✅ تم تخصيص $FOOTER_FILE بنجاح."
     fi
 done
 
 for FOOTER_LOGIN_FILE in \
-    "feeds/luci/themes/luci-theme-argon/ucode/template/themes/argon/footer_login.ut" \
-    "package/luci-theme-argon/ucode/template/themes/argon/footer_login.ut"
+    "package/base-files/files/usr/lib/lua/luci/view/themes/argon/footer_login.htm" \
+    "package/luci-theme-argon/luasrc/view/themes/argon/footer_login.htm" \
+    "feeds/luci/themes/luci-theme-argon/luasrc/view/themes/argon/footer_login.htm"
 do
     if [ -f "$FOOTER_LOGIN_FILE" ]; then
-        cat << 'EOF' > "$FOOTER_LOGIN_FILE"
-<footer class="login-footer">
-        <div class="container">
-                <div class="row">
-                        <div class="col-lg-12 text-center">
-                                <span style="color: #5e72e4; font-weight: 500;">Ahosam-wifi-770528863</span>
-                        </div>
-                </div>
-        </div>
+        {
+            head -n 20 "$FOOTER_LOGIN_FILE"
+            cat << 'EOF'
+<footer class="mobile-hide">
+	<div>
+		<a href="https://wa.me/+967770528863" style="color: #5e72e4; font-weight: 500;">Powered by Ahosam-WIFI | للتواصل : 770528863</a>
+		<ul class="breadcrumb pull-right" id="modemenu" style="display:none"></ul>
+	</div>
 </footer>
-{% include('themes/' + theme + '/page_scripts', { is_login: true }) %}
-</body>
-</html>
 EOF
+            tail -n +29 "$FOOTER_LOGIN_FILE"
+        } > "${FOOTER_LOGIN_FILE}.tmp" && mv "${FOOTER_LOGIN_FILE}.tmp" "$FOOTER_LOGIN_FILE"
         echo "✅ تم تخصيص $FOOTER_LOGIN_FILE بنجاح."
     fi
 done
@@ -699,13 +707,12 @@ else
 fi
 
 # ==========================================
-# 16. استبدال صورة argon.svg في صفحة الدخول لثيم Argon
+# 16. استبدال صورة argon.svg داخل حزمة luci-theme-argon (بدون تعارض مع base-files)
 # ==========================================
+rm -f package/base-files/files/www/luci-static/argon/img/argon.svg 2>/dev/null || true
 ARGON_SVG_SRC="$GITHUB_WORKSPACE/argon.svg"
 if [ -f "$ARGON_SVG_SRC" ]; then
-    mkdir -p package/base-files/files/www/luci-static/argon/img
-    cp -f "$ARGON_SVG_SRC" package/base-files/files/www/luci-static/argon/img/argon.svg
-
+    UPDATED_SVG=0
     for SVG_TARGET in \
         "package/luci-theme-argon/htdocs/luci-static/argon/img/argon.svg" \
         "feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/img/argon.svg" \
@@ -715,10 +722,13 @@ if [ -f "$ARGON_SVG_SRC" ]; then
         if [ -f "$SVG_TARGET" ]; then
             cp -f "$ARGON_SVG_SRC" "$SVG_TARGET"
             echo "✅ تم تحديث: $SVG_TARGET"
+            UPDATED_SVG=1
         fi
     done
 
-    echo "✅ تم دمج صورة argon.svg بنجاح."
+    if [ "$UPDATED_SVG" -eq 0 ]; then
+        echo "⚠️ لم يُعثر على ملف argon.svg داخل شجرة luci-theme-argon."
+    fi
 else
     echo "⚠️ تحذير: لم يتم العثور على ملف argon.svg في $GITHUB_WORKSPACE."
 fi
@@ -819,7 +829,7 @@ set_wan_blue_link_only() {
     echo 0 > "/sys/class/leds/$LED_B2/brightness" 2>/dev/null || true
 
     if [ -f "/sys/class/leds/$LED_B2/trigger" ]; then
-        WAN_TRIG=$(tr ' ' '\n' < "/sys/class/leds/$LED_B2/trigger" | tr -d '[]' | grep -E 'mt7530.*:04:link|mt7530.*:00:link|mt7530.*:link' | head -n 1)
+        WAN_TRIG=$(tr '\n' ' ' < "/sys/class/leds/$LED_B2/trigger" | tr -d '[]' | tr ' ' '\n' | grep -E 'mt7530.*:04:link|mt7530.*:00:link|mt7530.*:link' | head -n 1)
         if [ -n "$WAN_TRIG" ]; then
             echo "$WAN_TRIG" > "/sys/class/leds/$LED_B2/trigger" 2>/dev/null || true
             return 0
