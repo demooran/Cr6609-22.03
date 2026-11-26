@@ -122,7 +122,16 @@ jobs:
 
         echo "Starting compilation with $(nproc) threads"
 
-        make -j$(nproc) USE_CCACHE=1 || make -j1 V=s USE_CCACHE=1
+        if ! make -j$(nproc) USE_CCACHE=1 2>&1 | tee /tmp/build_parallel.log; then
+          echo "======= Parallel build failed; printing last 120 lines ======="
+          tail -n 120 /tmp/build_parallel.log || true
+          echo "======= Retrying with V=s (-j1) to print exact error ======="
+          make -j1 V=s USE_CCACHE=1 2>&1 | tee /tmp/build_vs.log || {
+            echo "======= Last 120 lines of V=s build log ======="
+            tail -n 120 /tmp/build_vs.log || true
+            exit 1
+          }
+        fi
 
         echo "status=success" >> "$GITHUB_OUTPUT"
 
