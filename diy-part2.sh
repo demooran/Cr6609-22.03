@@ -11,10 +11,22 @@
 #
 
 # ==========================================
-# 1. تعيين اسم الجهاز (Hostname)
+# 1. تعيين اسم الجهاز (Hostname) والمنطقة الزمنية
 # ==========================================
-sed -i 's/OpenWrt/PROMAX/g' package/base-files/files/bin/config_generate
-sed -i 's/ImmortalWrt/PROMAX/g' package/base-files/files/bin/config_generate
+if [ -f package/base-files/files/bin/config_generate ]; then
+    sed -i "s/OpenWrt/hosam.AX/g; s/ImmortalWrt/hosam.AX/g" package/base-files/files/bin/config_generate
+fi
+
+mkdir -p package/base-files/files/etc/uci-defaults files/etc/uci-defaults
+cat << 'EOF' > package/base-files/files/etc/uci-defaults/93-set-hostname
+#!/bin/sh
+uci -q set system.@system[0].hostname='hosam.AX'
+uci -q set system.@system[0].zonename='Asia/Aden'
+uci -q set system.@system[0].timezone='<+03>-3'
+uci commit system
+exit 0
+EOF
+chmod +x package/base-files/files/etc/uci-defaults/93-set-hostname
 
 # ==========================================
 # 2. إعدادات الواي فاي الافتراضية (تفعيل الراديو)
@@ -25,7 +37,7 @@ if [ -f "$WIFI_FILE" ]; then
 fi
 
 # ==========================================
-# 3. إعدادات وضع الـ Access Point والدولة
+# 3. إعدادات وضع الـ Access Point والجسر br-lan وتمرير VLAN مثل 110
 # ==========================================
 mkdir -p package/base-files/files/etc/uci-defaults
 cat << 'EOF' > package/base-files/files/etc/uci-defaults/99-set-ap-mode
@@ -44,10 +56,11 @@ uci set dhcp.lan.ra=disabled
 uci set dhcp.lan.dhcpv6=disabled
 uci set dhcp.lan.ndp=disabled
 
-# 4. تعيين IP ثابت (بدون Gateway)
+# 4. تعيين IP ثابت و DNS (بدون Gateway)
 uci set network.lan.proto='static'
 uci set network.lan.ipaddr='192.168.1.21'
 uci set network.lan.netmask='255.255.255.0'
+uci set network.lan.dns='8.8.8.8 1.1.1.1'
 uci delete network.lan.gateway 2>/dev/null || true
 
 # 5. عزل العملاء
@@ -59,12 +72,27 @@ if uci get wireless.default_radio1 >/dev/null 2>&1; then
 fi
 
 # 6. تعيين SSID
-uci set wireless.default_radio0.ssid='promax'
+uci set wireless.default_radio0.ssid='hossam-WIFI.6@'
 uci set wireless.default_radio0.encryption='none'
 if uci get wireless.default_radio1 >/dev/null 2>&1; then
-    uci set wireless.default_radio1.ssid='promax_5G'
+    uci set wireless.default_radio1.ssid='hossam-WIFI.6@5G'
     uci set wireless.default_radio1.encryption='none'
 fi
+
+# 7. ضبط منافذ الجسر br-lan (lan1, lan2, lan3, wan) وتعطيل IPv6 على الجهاز
+for dev in $(uci show network 2>/dev/null | grep "=device" | cut -d'.' -f2 | cut -d'=' -f1); do
+    if [ "$(uci -q get network.$dev.name)" = "br-lan" ]; then
+        uci -q delete network.$dev.ports
+        for p in lan1 lan2 lan3 wan; do
+            uci add_list network.$dev.ports="$p"
+        done
+        uci set network.$dev.ipv6='0'
+    fi
+done
+
+# 8. تفعيل وضع promisc على br-lan و eth0 لضمان عدم إسقاط إطارات VLAN في MT7530 DSA
+ip link set dev br-lan promisc on 2>/dev/null || true
+ip link set dev eth0 promisc on 2>/dev/null || true
 
 uci commit dhcp
 uci commit network
@@ -72,6 +100,13 @@ uci commit wireless
 exit 0
 EOF
 chmod +x package/base-files/files/etc/uci-defaults/99-set-ap-mode
+
+# ضمان بقاء promisc مفعلاً على br-lan و eth0 عند إقلاع الشبكة
+if [ -f package/base-files/files/etc/rc.local ]; then
+    if ! grep -q "promisc on" package/base-files/files/etc/rc.local; then
+        sed -i '/exit 0/i ip link set dev br-lan promisc on 2>/dev/null || true\nip link set dev eth0 promisc on 2>/dev/null || true' package/base-files/files/etc/rc.local
+    fi
+fi
 
 # ==========================================
 # 4. دمج خلفية الثيم وتفعيل Argon
@@ -107,26 +142,30 @@ EOF
 chmod +x package/base-files/files/etc/uci-defaults/98-argon-theme
 
 # ==========================================
-# 5. تعديل wireless.js (dBm + Status)
+# 5. تعديل wireless.js (dBm حتى 40 + Current power + 160 MHz)
 # ==========================================
-WIRELESS_JS=$(find . -name "wireless.js" -path "*network*" 2>/dev/null | head -n 1)
+WIRELESS_JS=$(find feeds/luci package -name "wireless.js" -path "*network*" 2>/dev/null | head -n 1)
 
 if [ -n "$WIRELESS_JS" ] && [ -f "$WIRELESS_JS" ]; then
     echo "تم العثور على wireless.js في: $WIRELESS_JS"
+    sed -i "s/\r//g" "$WIRELESS_JS"
 
-    # تنظيف الملف من الرموز الخفية لمنع أخطاء الـ sed
-    sed -i 's/\r//g' "$WIRELESS_JS"
-
-    # توسيع قائمة الـ dBm لتشمل القيم من 27 إلى 40
     if grep -q "for (var i = 0; i < pwrlist.length; i++)" "$WIRELESS_JS"; then
-        sed -i 's|for (var i = 0; i < pwrlist.length; i++)|for (var i = 27; i <= 40; i++) { pwrlist.push({dbm: i, mw: Math.round(Math.pow(10, (i-30)/10) * 1000)}); }; pwrlist = pwrlist.filter((v,i,a)=>a.findIndex(t=>(t.dbm===v.dbm))===i); for (var i = 0; i < pwrlist.length; i++)|g' "$WIRELESS_JS"
-        echo "✅ تمت إضافة قيم dBm بنجاح."
+        sed -i "s|for (var i = 0; i < pwrlist.length; i++)|for (var i = 27; i <= 38; i++) { pwrlist.push({dbm: i, mw: Math.round(Math.pow(10, (i-30)/10) * 1000)}); }; pwrlist = pwrlist.filter((v,i,a)=>a.findIndex(t=>(t.dbm===v.dbm))===i); for (var i = 0; i < pwrlist.length; i++)|g" "$WIRELESS_JS"
+        echo "✅ تمت إضافة قيم dBm (حتى 40) بنجاح."
     fi
 
-    # مطابقة وربط القيمة الحالية (Current power) بشكل ديناميكي لكل راديو (2.4G و 5G) عبر awk
-    awk '{ gsub(/radioNet\.getTXPower\(\)/, "uci.get(\"wireless\", radioNet.getWifiDeviceName(), \"txpower\") || \"36\""); print }' "$WIRELESS_JS" > "$WIRELESS_JS.tmp" && mv "$WIRELESS_JS.tmp" "$WIRELESS_JS"
-    echo "✅ تم تعديل Status وتوافق الطاقة ديناميكياً بنجاح."
+    sed -i "s/i<=38/i<=40/g; s/i <= 38/i <= 40/g" "$WIRELESS_JS"
 
+    awk '{
+        gsub(/this\.powerval=this\.wifiNetwork\?this\.wifiNetwork\.getTXPower\(\):null/, "this.powerval=(this.wifiNetwork?(uci.get(\"wireless\",this.wifiNetwork.getWifiDeviceName(),\"txpower\")||this.wifiNetwork.getTXPower()):null)");
+        gsub(/this\.powerval = this\.wifiNetwork \? this\.wifiNetwork\.getTXPower\(\) : null/, "this.powerval = (this.wifiNetwork ? (uci.get(\"wireless\", this.wifiNetwork.getWifiDeviceName(), \"txpower\") || this.wifiNetwork.getTXPower()) : null)");
+        gsub(/radioNet\.getTXPower\(\)/, "(uci.get(\"wireless\", radioNet.getWifiDeviceName(), \"txpower\") || \"36\")");
+        print
+    }' "$WIRELESS_JS" > "$WIRELESS_JS.tmp" && mv "$WIRELESS_JS.tmp" "$WIRELESS_JS"
+
+    sed -i "s/htmodelist\.VHT160/true/g; s/htmodelist\.HE160/true/g" "$WIRELESS_JS"
+    echo "✅ تم تعديل wireless.js وتحديث Current power بنجاح."
 else
     echo "⚠️ لم يتم العثور على wireless.js."
 fi
@@ -318,4 +357,380 @@ return baseclass.extend({
 });
 EOF
     echo "✅ تم تخصيص ملف 10_system.js بنجاح."
+fi
+
+# ==========================================
+# 10. تبسيط صفحة Backup / Flash Firmware وإبقاء Restore و Flash image فقط
+# ==========================================
+FLASH_JS=$(find feeds/luci -path "*/view/system/flash.js" 2>/dev/null | head -n 1)
+if [ -n "$FLASH_JS" ] && [ -f "$FLASH_JS" ]; then
+    cat << 'EOF' > "$FLASH_JS"
+'use strict';
+'require view';
+'require dom';
+'require fs';
+'require rpc';
+'require ui';
+'require form';
+'require baseclass';
+
+var callSystemValidateFirmwareImage = rpc.declare({
+	object: 'system',
+	method: 'validate_firmware_image',
+	params: [ 'path' ]
+});
+
+function findStorageSize(procmtd, procpart) {
+	var kernsize = 0, rootfsprovsize = 0, efsprovsize = 0, efsvalidsize = 0, rubifs = 0, mtdblocks = {};
+	procmtd.split(/\n/).forEach(function(ln) {
+		var match = ln.match(/^mtd(\d+): [0-9a-fA-F]+ [0-9a-fA-F]+ "(.+?)"$/);
+		if (match) mtdblocks[match[2]] = parseInt(match[1], 10);
+	});
+	if (mtdblocks.hasOwnProperty('kernel') && mtdblocks.hasOwnProperty('rootfs')) {
+		kernsize = parseInt('0x' + (procmtd.match(new RegExp('^mtd' + mtdblocks['kernel'] + ': ([0-9a-fA-F]+)', 'm')) || [0,0])[1], 16);
+		rootfsprovsize = parseInt('0x' + (procmtd.match(new RegExp('^mtd' + mtdblocks['rootfs'] + ': ([0-9a-fA-F]+)', 'm')) || [0,0])[1], 16);
+	}
+	if (mtdblocks.hasOwnProperty('ubi')) {
+		rubifs = parseInt('0x' + (procmtd.match(new RegExp('^mtd' + mtdblocks['ubi'] + ': ([0-9a-fA-F]+)', 'm')) || [0,0])[1], 16);
+	}
+	if (mtdblocks.hasOwnProperty('efs')) {
+		efsprovsize = parseInt('0x' + (procmtd.match(new RegExp('^mtd' + mtdblocks['efs'] + ': ([0-9a-fA-F]+)', 'm')) || [0,0])[1], 16);
+	}
+	if (kernsize > 0 && rootfsprovsize > 0) return kernsize + rootfsprovsize;
+	if (rubifs > 0) return rubifs;
+	if (efsprovsize > 0 && efsvalidsize > 0) return efsprovsize;
+	return 0;
+}
+
+var mapdata = { actions: {}, config: {} };
+var isReadonlyView = false;
+
+return view.extend({
+	load: function() {
+		var tasks = [
+			L.resolveDefault(fs.stat('/lib/upgrade/platform.sh'), {}),
+			fs.trimmed('/proc/sys/kernel/hostname'),
+			fs.trimmed('/proc/mtd'),
+			fs.trimmed('/proc/partitions'),
+			fs.trimmed('/proc/mounts')
+		];
+		return Promise.all(tasks);
+	},
+
+	handleFirstboot: function(ev) {
+		if (!confirm(_('Do you really want to erase all settings?')))
+			return;
+
+		ui.showModal(_('Erasing...'), [
+			E('p', { 'class': 'spinning' }, _('The system is erasing the configuration partition now and will reboot itself when finished.'))
+		]);
+
+		fs.exec('/sbin/firstboot', [ '-r', '-y' ]);
+		ui.awaitReconnect('192.168.1.21', '192.168.1.1', 'openwrt.lan');
+	},
+
+	handleSysupgrade: function(storage_size, has_rootfs_data, ev) {
+		return ui.uploadFile('/tmp/firmware.bin', ev.target.firstChild).then(L.bind(function(btn, reply) {
+			btn.firstChild.data = _('Checking image…');
+			ui.showModal(_('Checking image…'), [
+				E('span', { 'class': 'spinning' }, _('Verifying the uploaded image file.'))
+			]);
+			return callSystemValidateFirmwareImage('/tmp/firmware.bin').then(function(res) {
+				return [ reply, res ];
+			});
+		}, this, ev.target)).then(L.bind(function(btn, reply) {
+			return fs.exec('/sbin/sysupgrade', [ '--test', '/tmp/firmware.bin' ]).then(function(res) {
+				reply.push(res);
+				return reply;
+			});
+		}, this, ev.target)).then(L.bind(function(btn, res) {
+			var opts = {
+				keep: [ E('input', { type: 'checkbox' }), false, '-n' ],
+				force: [ E('input', { type: 'checkbox' }), true, '--force' ],
+				skip_orig: [ E('input', { type: 'checkbox' }), true, '-u' ],
+				backup_pkgs: [ E('input', { type: 'checkbox' }), true, '-k' ]
+			},
+			is_valid = res[1].valid,
+			is_forceable = res[1].forceable,
+			allow_backup = res[1].allow_backup,
+			is_too_big = (storage_size > 0 && res[0].size > storage_size),
+			body = [];
+
+			body.push(E('p', _("The flash image was uploaded. Below is the checksum and file size listed, compare them with the original file to ensure data integrity. <br /> Click 'Continue' below to start the flash procedure.")));
+			body.push(E('ul', {}, [
+				res[0].size ? E('li', {}, '%s: %1024.2mB'.format(_('Size'), res[0].size)) : '',
+				res[0].checksum ? E('li', {}, '%s: %s'.format(_('MD5'), res[0].checksum)) : '',
+				res[0].sha256sum ? E('li', {}, '%s: %s'.format(_('SHA256'), res[0].sha256sum)) : ''
+			]));
+			body.push(E('p', {}, E('label', { 'class': 'btn' }, [
+				opts.keep[0], ' ', _('Keep settings and retain the current configuration')
+			])));
+
+			if (!is_valid || is_too_big) {
+				body.push(E('p', { 'class': 'alert-message' }, [
+					res[2].stderr ? res[2].stderr : '',
+					res[2].stderr ? E( br ) : '',
+					_('The uploaded image file does not contain a supported format. Make sure that you choose the generic image format for your platform.')
+				]));
+			}
+
+			if (!allow_backup) {
+				body.push(E('p', { 'class': 'alert-message' }, [
+					_('The uploaded firmware does not allow keeping current configuration.')
+				]));
+				opts.keep[0].disabled = true;
+			} else {
+				opts.keep[0].checked = true;
+				if (has_rootfs_data) {
+					body.push(E('p', {}, E('label', { 'class': 'btn' }, [
+						opts.skip_orig[0], ' ', _('Skip from backup files that are equal to those in /rom')
+					])));
+				}
+			}
+
+			ui.showModal(_('Flash image?'), body.concat([
+				E('div', { 'class': 'right' }, [
+					E('button', {
+						'class': 'btn',
+						'click': ui.createHandlerFn(this, function(ev) {
+							return fs.remove('/tmp/firmware.bin').finally(ui.hideModal);
+						})
+					}, [ _('Cancel') ]),
+					' ',
+					E('button', {
+						'class': 'btn cbi-button-action important',
+						'click': ui.createHandlerFn(this, function(ev) {
+							var args = [ '/tmp/firmware.bin' ];
+							if (!opts.keep[0].checked) args.unshift('-n');
+							if (opts.force[0].checked) args.unshift('--force');
+							if (opts.skip_orig[0].checked && opts.keep[0].checked) args.unshift('-u');
+							ui.showModal(_('Flashing...'), [
+								E('p', { 'class': 'spinning' }, _('The system is flashing the new firmware image now. Do not power off the device!'))
+							]);
+							fs.exec('/sbin/sysupgrade', args);
+							ui.awaitReconnect('192.168.1.21', '192.168.1.1', 'openwrt.lan');
+						})
+					}, [ _('Continue') ])
+				])
+			]));
+		}, this, ev.target)).catch(function(e) {
+			ui.addNotification(null, E('p', e.message));
+		}).finally(L.bind(function(btn) {
+			btn.firstChild.data = _('Flash image...');
+		}, this, ev.target));
+	},
+
+	render: function(rpc_replies) {
+		var has_sysupgrade = (rpc_replies[0].type == 'file'),
+		    procmtd = rpc_replies[2] || '',
+		    procpart = rpc_replies[3] || '',
+		    procmounts = rpc_replies[4] || '',
+		    has_rootfs_data = (procmtd.match(/"rootfs_data"/) != null) || (procmounts.match("overlayfs:\\/overlay \\/ ") != null),
+		    storage_size = findStorageSize(procmtd, procpart),
+		    m, s, o, ss;
+
+		m = new form.JSONMap(mapdata, _('Flash operations'));
+		m.tabbed = true;
+		m.readonly = isReadonlyView;
+
+		s = m.section(form.NamedSection, 'actions', _('Actions'));
+
+		o = s.option(
+			form.SectionValue, 'actions', form.NamedSection, 'actions', 'actions',
+			_('Restore'),
+			_('To restore configuration files, you can upload a previously generated backup archive here. To reset the firmware to its initial state, click "Perform reset" (only possible with squashfs images).')
+		);
+		ss = o.subsection;
+		if (has_rootfs_data) {
+			o = ss.option(form.Button, 'reset', _('Reset to defaults'));
+			o.inputstyle = 'negative important';
+			o.inputtitle = _('Perform reset');
+			o.onclick = this.handleFirstboot;
+		}
+
+		o = s.option(
+			form.SectionValue, 'actions', form.NamedSection, 'actions', 'actions',
+			_('Flash new firmware image'),
+			has_sysupgrade
+				? _('Upload a sysupgrade-compatible image here to replace the running firmware.')
+				: _('Sorry, there is no sysupgrade support present; a new firmware image must be flashed manually. Please refer to the wiki for device specific install instructions.')
+		);
+		ss = o.subsection;
+		if (has_sysupgrade) {
+			o = ss.option(form.Button, 'sysupgrade', _('Image'));
+			o.inputstyle = 'action important';
+			o.inputtitle = _('Flash image...');
+			o.onclick = L.bind(this.handleSysupgrade, this, storage_size, has_rootfs_data);
+		}
+
+		return m.render();
+	},
+
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
+});
+EOF
+    echo "✅ تم تخصيص ملف flash.js بنجاح."
+fi
+
+# ==========================================
+# 11. تخصيص الفوتر (Footer) لثيم Argon (Ahosam-wifi-770528863)
+# ==========================================
+for FOOTER_FILE in \
+    "package/base-files/files/usr/lib/lua/luci/view/themes/argon/footer.htm" \
+    "package/luci-theme-argon/luasrc/view/themes/argon/footer.htm" \
+    "package/luci-theme-argon/ucode/template/themes/argon/footer.ut" \
+    "feeds/luci/themes/luci-theme-argon/luasrc/view/themes/argon/footer.htm" \
+    "feeds/luci/themes/luci-theme-argon/ucode/template/themes/argon/footer.ut"
+do
+    if [ -f "$FOOTER_FILE" ]; then
+        cat << 'EOF' > "$FOOTER_FILE"
+<%#
+ Argon theme footer
+-%>
+</div>
+<footer class="mobile-hide" style="text-wrap: auto">
+	<div class="footer-content" style="display: flex; flex-wrap: wrap; gap: 0.5em; justify-content: end;">
+		<span style="color: #5e72e4; font-weight: 500;">Powered by Ahosam-wifi-770528863</span>
+	</div>
+</footer>
+</main>
+</div>
+</div>
+</body>
+</html>
+EOF
+        echo "✅ تم تخصيص $FOOTER_FILE بنجاح."
+    fi
+done
+
+for FOOTER_LOGIN_FILE in \
+    "feeds/luci/themes/luci-theme-argon/ucode/template/themes/argon/footer_login.ut" \
+    "package/luci-theme-argon/ucode/template/themes/argon/footer_login.ut"
+do
+    if [ -f "$FOOTER_LOGIN_FILE" ]; then
+        cat << 'EOF' > "$FOOTER_LOGIN_FILE"
+<footer class="login-footer">
+        <div class="container">
+                <div class="row">
+                        <div class="col-lg-12 text-center">
+                                <span style="color: #5e72e4; font-weight: 500;">Powered by Ahosam-WIFI | 770528863 : للتواصل</span>
+                        </div>
+                </div>
+        </div>
+</footer>
+{% include('themes/' + theme + '/page_scripts', { is_login: true }) %}
+</body>
+</html>
+EOF
+        echo "✅ تم تخصيص $FOOTER_LOGIN_FILE بنجاح."
+    fi
+done
+
+# ==========================================
+# 12. تفعيل دعم WLAN Roaming (802.11r/k/v) عبر wpad-mbedtls
+# ==========================================
+if [ -f .config ]; then
+    sed -i '/CONFIG_PACKAGE_wpad-basic/d' .config
+    sed -i '/CONFIG_PACKAGE_wpad-mini/d' .config
+    sed -i '/CONFIG_PACKAGE_wpad-mesh/d' .config
+    echo "# CONFIG_PACKAGE_wpad-basic-mbedtls is not set" >> .config
+    if ! grep -q "^CONFIG_PACKAGE_wpad-mbedtls=" .config; then
+        echo "CONFIG_PACKAGE_wpad-mbedtls=y" >> .config
+    fi
+    echo "✅ تم ضبط wpad-mbedtls لتفعيل ميزات 802.11r/k/v."
+fi
+
+# ==========================================
+# 13. ضبط مستودعات opkg على HTTP لتفادي أخطاء شهادة TLS
+# ==========================================
+mkdir -p package/base-files/files/etc/uci-defaults
+cat << 'EOF' > package/base-files/files/etc/uci-defaults/96-fix-opkg-http
+#!/bin/sh
+if [ -f /etc/opkg/distfeeds.conf ]; then
+    sed -i 's|https://|http://|g' /etc/opkg/distfeeds.conf
+fi
+exit 0
+EOF
+chmod +x package/base-files/files/etc/uci-defaults/96-fix-opkg-http
+
+# ==========================================
+# 14. إخفاء تبويب Argon Config وتبويب Software من قائمة LuCI نهائياً
+# ==========================================
+for MENU_FILE in $(find feeds/luci package -path "*/root/usr/share/luci/menu.d/*.json" 2>/dev/null); do
+    case "$(basename "$MENU_FILE")" in
+        *argon*config*.json|*opkg*.json|*packages*.json)
+            rm -f "$MENU_FILE"
+            echo "✅ تم حذف ملف قائمة: $MENU_FILE"
+            continue
+            ;;
+    esac
+    if grep -qE '"admin/system/opkg"|"admin/system/packages"|"admin/system/argon"|"admin/system/argon-config"' "$MENU_FILE"; then
+        awk '
+        /"admin\/system\/opkg":/ || /"admin\/system\/packages":/ || /"admin\/system\/argon":/ || /"admin\/system\/argon-config":/ { skip=1; braces=0 }
+        skip {
+            for (i=1; i<=length($0); i++) {
+                c = substr($0, i, 1)
+                if (c == "{") braces++
+                else if (c == "}") braces--
+            }
+            if (braces <= 0 && /}/) skip=0
+            next
+        }
+        { print }
+        ' "$MENU_FILE" > "$MENU_FILE.tmp" && mv "$MENU_FILE.tmp" "$MENU_FILE"
+
+        sed -i ':a;N;$!ba;s/,\s*\n\s*}/\n}/g' "$MENU_FILE" 2>/dev/null || true
+        echo "✅ تم إخفاء العناصر المستهدفة من: $MENU_FILE"
+    fi
+done
+
+# ==========================================
+# 15. دمج إضافة quicksetup_backup.tar.gz داخل الفيرموير
+# ==========================================
+mkdir -p package/base-files/files
+if [ -f "$GITHUB_WORKSPACE/quicksetup_backup.tar.gz" ]; then
+    tar -xzf "$GITHUB_WORKSPACE/quicksetup_backup.tar.gz" -C package/base-files/files/
+    chmod +x package/base-files/files/etc/init.d/wizard 2>/dev/null || true
+
+    mkdir -p package/base-files/files/etc/uci-defaults
+    cat << 'EOF' > package/base-files/files/etc/uci-defaults/95-enable-quicksetup
+#!/bin/sh
+if [ -x /etc/init.d/wizard ]; then
+    /etc/init.d/wizard enable 2>/dev/null || true
+    /etc/init.d/wizard start 2>/dev/null || true
+fi
+rm -rf /tmp/luci-indexcache /tmp/luci-modulecache
+exit 0
+EOF
+    chmod +x package/base-files/files/etc/uci-defaults/95-enable-quicksetup
+    echo "✅ تم دمج إضافة quicksetup وتفعيل خدمة wizard بنجاح."
+else
+    echo "⚠️ تحذير: لم يتم العثور على ملف quicksetup_backup.tar.gz في المستودع."
+fi
+
+# ==========================================
+# 16. استبدال صورة argon.svg في صفحة الدخول لثيم Argon
+# ==========================================
+ARGON_SVG_SRC="$GITHUB_WORKSPACE/argon.svg"
+if [ -f "$ARGON_SVG_SRC" ]; then
+    mkdir -p package/base-files/files/www/luci-static/argon/img
+    cp -f "$ARGON_SVG_SRC" package/base-files/files/www/luci-static/argon/img/argon.svg
+
+    for SVG_TARGET in \
+        "package/luci-theme-argon/htdocs/luci-static/argon/img/argon.svg" \
+        "feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/img/argon.svg" \
+        "package/luci-theme-argon/root/www/luci-static/argon/img/argon.svg" \
+        "feeds/luci/themes/luci-theme-argon/root/www/luci-static/argon/img/argon.svg"
+    do
+        if [ -f "$SVG_TARGET" ]; then
+            cp -f "$ARGON_SVG_SRC" "$SVG_TARGET"
+            echo "✅ تم تحديث: $SVG_TARGET"
+        fi
+    done
+
+    echo "✅ تم دمج صورة argon.svg بنجاح."
+else
+    echo "⚠️ تحذير: لم يتم العثور على ملف argon.svg في $GITHUB_WORKSPACE."
 fi
