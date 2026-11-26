@@ -7,7 +7,7 @@
 #
 # https://github.com/P3TERX/Actions-OpenWrt
 # File name: diy-part2.sh
-# Description: OpenWrt DIY script part 2 (After Update feeds)
+# Description: OpenWrt / ImmortalWrt DIY script part 2 for Xiaomi CR6609 (Promax AP)
 #
 
 # ==========================================
@@ -33,64 +33,61 @@ chmod +x package/base-files/files/etc/uci-defaults/93-set-hostname
 # ==========================================
 WIFI_FILE="package/kernel/mac80211/files/lib/wifi/mac80211.sh"
 if [ -f "$WIFI_FILE" ]; then
-    sed -i 's/disabled=1/disabled=0/g' "$WIFI_FILE"
+    sed -i "s/disabled=1/disabled=0/g" "$WIFI_FILE"
 fi
 
 # ==========================================
-# 3. إعدادات وضع الـ Access Point والجسر br-lan وتمرير VLAN مثل 110
+# 3. إعدادات وضع الـ Access Point والجسر br-lan والـ VLAN
 # ==========================================
-mkdir -p package/base-files/files/etc/uci-defaults
 cat << 'EOF' > package/base-files/files/etc/uci-defaults/99-set-ap-mode
 #!/bin/sh
 
-# 1. حذف واجهات الـ WAN
-uci delete network.wan 2>/dev/null || true
-uci delete network.wan6 2>/dev/null || true
+uci -q delete network.wan
+uci -q delete network.wan6
 
-# 2. تعطيل DHCP على LAN
-uci set dhcp.lan.ignore=1
-uci set dhcp.lan.dynamicdhcp=0
+uci -q set dhcp.lan.ignore='1'
+uci -q set dhcp.lan.dynamicdhcp='0'
 
-# 3. تعطيل IPv6
-uci set dhcp.lan.ra=disabled
-uci set dhcp.lan.dhcpv6=disabled
-uci set dhcp.lan.ndp=disabled
+uci -q set dhcp.lan.ra='disabled'
+uci -q set dhcp.lan.dhcpv6='disabled'
+uci -q set dhcp.lan.ndp='disabled'
 
-# 4. تعيين IP ثابت و DNS (بدون Gateway)
-uci set network.lan.proto='static'
-uci set network.lan.ipaddr='192.168.1.21'
-uci set network.lan.netmask='255.255.255.0'
-uci set network.lan.dns='8.8.8.8 1.1.1.1'
-uci delete network.lan.gateway 2>/dev/null || true
+uci -q set network.lan.proto='static'
+uci -q set network.lan.ipaddr='192.168.1.20'
+uci -q set network.lan.netmask='255.255.255.0'
+uci -q set network.lan.dns='8.8.8.8 1.1.1.1'
+uci -q delete network.lan.gateway
+uci -q set network.lan.ipv6='0'
+uci -q set network.globals.packet_steering='0'
 
-# 5. عزل العملاء
-uci set wireless.default_radio0.isolate=1
-uci set wireless.default_radio0.disassoc_low_ack=0
-if uci get wireless.default_radio1 >/dev/null 2>&1; then
-    uci set wireless.default_radio1.isolate=1
-    uci set wireless.default_radio1.disassoc_low_ack=0
+uci -q set wireless.default_radio0.mode='ap'
+uci -q set wireless.default_radio0.network='lan'
+uci -q set wireless.default_radio0.isolate='1'
+uci -q set wireless.default_radio0.disassoc_low_ack='0'
+if uci -q get wireless.default_radio1 >/dev/null 2>&1; then
+    uci -q set wireless.default_radio1.mode='ap'
+    uci -q set wireless.default_radio1.network='lan'
+    uci -q set wireless.default_radio1.isolate='1'
+    uci -q set wireless.default_radio1.disassoc_low_ack='0'
 fi
 
-# 6. تعيين SSID
-uci set wireless.default_radio0.ssid='hossam-WIFI.6@'
-uci set wireless.default_radio0.encryption='none'
-if uci get wireless.default_radio1 >/dev/null 2>&1; then
-    uci set wireless.default_radio1.ssid='hossam-WIFI.6@5G'
-    uci set wireless.default_radio1.encryption='none'
+uci -q set wireless.default_radio0.ssid='hossam-WIFI.6@'
+uci -q set wireless.default_radio0.encryption='none'
+if uci -q get wireless.default_radio1 >/dev/null 2>&1; then
+    uci -q set wireless.default_radio1.ssid='hossam-WIFI.6@5G'
+    uci -q set wireless.default_radio1.encryption='none'
 fi
 
-# 7. ضبط منافذ الجسر br-lan (lan1, lan2, lan3, wan) وتعطيل IPv6 على الجهاز
-for dev in $(uci show network 2>/dev/null | grep "=device" | cut -d'.' -f2 | cut -d'=' -f1); do
+for dev in $(uci show network 2>/dev/null | grep "=device" | cut -d. -f2 | cut -d= -f1); do
     if [ "$(uci -q get network.$dev.name)" = "br-lan" ]; then
         uci -q delete network.$dev.ports
         for p in lan1 lan2 lan3 wan; do
             uci add_list network.$dev.ports="$p"
         done
-        uci set network.$dev.ipv6='0'
+        uci -q set network.$dev.ipv6='0'
     fi
 done
 
-# 8. تفعيل وضع promisc على br-lan و eth0 لضمان عدم إسقاط إطارات VLAN في MT7530 DSA
 ip link set dev br-lan promisc on 2>/dev/null || true
 ip link set dev eth0 promisc on 2>/dev/null || true
 
@@ -101,36 +98,101 @@ exit 0
 EOF
 chmod +x package/base-files/files/etc/uci-defaults/99-set-ap-mode
 
-# ضمان بقاء promisc مفعلاً على br-lan و eth0 عند إقلاع الشبكة
+mkdir -p package/base-files/files/etc
 if [ -f package/base-files/files/etc/rc.local ]; then
     if ! grep -q "promisc on" package/base-files/files/etc/rc.local; then
-        sed -i '/exit 0/i ip link set dev br-lan promisc on 2>/dev/null || true\nip link set dev eth0 promisc on 2>/dev/null || true' package/base-files/files/etc/rc.local
+        sed -i "/exit 0/i ip link set dev br-lan promisc on 2>/dev/null || true\nip link set dev eth0 promisc on 2>/dev/null || true" package/base-files/files/etc/rc.local
     fi
+else
+    cat << 'EOF' > package/base-files/files/etc/rc.local
+ip link set dev br-lan promisc on 2>/dev/null || true
+ip link set dev eth0 promisc on 2>/dev/null || true
+exit 0
+EOF
+    chmod +x package/base-files/files/etc/rc.local
 fi
 
 # ==========================================
-# 4. دمج خلفية الثيم وتفعيل Argon
+# 4. جلب حزمة luci-theme-argon (فرع Lua المتوافق مع 22.03) وتخصيصها وتفعيلها
 # ==========================================
-if [ -f .config ] && ! grep -q "CONFIG_PACKAGE_luci-theme-argon=" .config; then
+rm -rf package/luci-theme-argon package/luci-app-argon-config feeds/luci/themes/luci-theme-argon \
+       package/base-files/files/www/luci-static/argon \
+       package/base-files/files/usr/lib/lua/luci/view/themes/argon
+
+git clone --depth=1 -b 18.06 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon || \
+git clone --depth=1 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
+
+ls -la package/luci-theme-argon/luasrc/view/themes/argon/ 2>/dev/null || echo "⚠️ تحذير: لم يتم العثور على قوالب Lua للثيم"
+
+if [ -f .config ]; then
+    sed -i "/CONFIG_PACKAGE_luci-theme-argon/d" .config
     echo "CONFIG_PACKAGE_luci-theme-argon=y" >> .config
 fi
 
-mkdir -p package/base-files/files/www/luci-static/argon/background/
-if [ -f "$GITHUB_WORKSPACE/bg.jpg" ]; then
-    cp "$GITHUB_WORKSPACE/bg.jpg" package/base-files/files/www/luci-static/argon/background/bg.jpg
+ARGON_SVG=""
+if [ -n "$GITHUB_WORKSPACE" ] && [ -f "$GITHUB_WORKSPACE/argon.svg" ]; then
+    ARGON_SVG="$GITHUB_WORKSPACE/argon.svg"
+elif [ -f "argon.svg" ]; then
+    ARGON_SVG="argon.svg"
+fi
+
+if [ -n "$ARGON_SVG" ]; then
+    for IMG_DIR in \
+        "package/luci-theme-argon/htdocs/luci-static/argon/img" \
+        "package/luci-theme-argon/luasrc/view/themes/argon/img"
+    do
+        if [ -d "$(dirname "$IMG_DIR")" ]; then
+            mkdir -p "$IMG_DIR"
+            cp "$ARGON_SVG" "$IMG_DIR/argon.svg"
+        fi
+    done
+
+    for VIEW_DIR in \
+        "package/luci-theme-argon/luasrc/view/themes/argon" \
+        "package/luci-theme-argon/ucode/template/themes/argon"
+    do
+        if [ -d "$VIEW_DIR" ]; then
+            for tpl in "$VIEW_DIR/login.htm" "$VIEW_DIR/header.htm" "$VIEW_DIR/sysauth.htm" "$VIEW_DIR/login.ut" "$VIEW_DIR/header.ut"; do
+                if [ -f "$tpl" ]; then
+                    awk '{
+                        gsub(/\/luci-static\/argon\/img\/[^" >)]*\.(png|jpg|jpeg|gif|svg|webp|PNG|JPG|JPEG|GIF|SVG|WEBP)/, "/luci-static/argon/img/argon.svg");
+                        print
+                    }' "$tpl" > "$tpl.tmp" && mv "$tpl.tmp" "$tpl"
+                fi
+            done
+        fi
+    done
+    echo "✅ تم تجهيز شعار argon.svg وتحديث القوالب في package/luci-theme-argon بنجاح."
+else
+    echo "⚠️ تحذير: لم يتم العثور على ملف argon.svg في مجلد الجذر."
+fi
+
+BG_IMG=""
+if [ -n "$GITHUB_WORKSPACE" ] && [ -f "$GITHUB_WORKSPACE/bg.jpg" ]; then
+    BG_IMG="$GITHUB_WORKSPACE/bg.jpg"
+elif [ -f "bg.jpg" ]; then
+    BG_IMG="bg.jpg"
+fi
+
+if [ -n "$BG_IMG" ]; then
+    for BG_DIR in \
+        "package/luci-theme-argon/htdocs/luci-static/argon/background" \
+        "package/luci-theme-argon/luasrc/view/themes/argon/background"
+    do
+        if [ -d "$(dirname "$BG_DIR")" ]; then
+            mkdir -p "$BG_DIR"
+            cp "$BG_IMG" "$BG_DIR/bg.jpg"
+        fi
+    done
     echo "✅ تم نسخ خلفية الثيم بنجاح."
 else
     echo "⚠️ تحذير: لم يتم العثور على ملف bg.jpg."
 fi
 
-# جعل الثيم الافتراضي هو Argon حصرياً
-sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci/Makefile 2>/dev/null || true
-sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/modules/luci-base/Makefile 2>/dev/null || true
-
 cat << 'EOF' > package/base-files/files/etc/uci-defaults/98-argon-theme
 #!/bin/sh
-if [ -d /www/luci-static/argon ]; then
-    uci set luci.main.mediaurlbase='/luci-static/argon'
+if [ -d /usr/lib/lua/luci/view/themes/argon ] || [ -d /www/luci-static/argon ]; then
+    uci -q set luci.main.mediaurlbase='/luci-static/argon'
     uci -q set argon.@global[0].bing_background='0'
     uci -q set argon.@global[0].mode='normal'
     uci commit luci
@@ -175,12 +237,12 @@ fi
 # ==========================================
 cat << 'EOF' > package/base-files/files/etc/uci-defaults/97-disable-router-services
 #!/bin/sh
-/etc/init.d/firewall disable 2>/dev/null || true
-/etc/init.d/eoip disable 2>/dev/null || true
-/etc/init.d/mwan3 disable 2>/dev/null || true
-/etc/init.d/odhcpd disable 2>/dev/null || true
-/etc/init.d/log disable 2>/dev/null || true
-/etc/init.d/dnsmasq disable 2>/dev/null || true
+for svc in firewall eoip mwan3 odhcpd log dnsmasq uhttpd-mod-ubus wpad-mini dropbear_legacy; do
+    if [ -x "/etc/init.d/$svc" ]; then
+        /etc/init.d/$svc disable >/dev/null 2>&1 || true
+        /etc/init.d/$svc stop >/dev/null 2>&1 || true
+    fi
+done
 exit 0
 EOF
 chmod +x package/base-files/files/etc/uci-defaults/97-disable-router-services
@@ -204,8 +266,7 @@ if [ -f "$MENU_SYS_JSON" ]; then
     { print }
     ' "$MENU_SYS_JSON" > "$MENU_SYS_JSON.tmp" && mv "$MENU_SYS_JSON.tmp" "$MENU_SYS_JSON"
 
-    # إزالة أي فاصلة زائدة تسبق قوس إغلاق الكائن } لضمان سلامة صياغة JSON
-    sed -i ':a;N;$!ba;s/,\s*\n\s*}/\n}/g' "$MENU_SYS_JSON" 2>/dev/null || true
+    sed -i ":a;N;\$!ba;s/,\s*\n\s*}/\n}/g" "$MENU_SYS_JSON" 2>/dev/null || true
     echo "✅ تم حذف تبويبات SSH و SSH-Keys و HTTP(S) Access من قائمة LuCI بنجاح."
 fi
 
@@ -256,22 +317,22 @@ fi
 # ==========================================
 cat << 'EOF' > package/base-files/files/etc/uci-defaults/99-fix-wifi-power
 #!/bin/sh
-uci -q batch << EOB
-set wireless.@wifi-device[0].disabled=0
-set wireless.@wifi-device[1].disabled=0
+uci -q batch << 'EOB'
+set wireless.@wifi-device[0].disabled='0'
+set wireless.@wifi-device[1].disabled='0'
 set wireless.@wifi-device[0].country='PA'
 set wireless.@wifi-device[1].country='PA'
 set wireless.@wifi-device[0].txpower='36'
 set wireless.@wifi-device[1].txpower='36'
 commit wireless
 EOB
-wifi reload
+wifi reload >/dev/null 2>&1 || true
 exit 0
 EOF
 chmod +x package/base-files/files/etc/uci-defaults/99-fix-wifi-power
 
 # ==========================================
-# 9. تخصيص معلومات النظام في واجهة Status (System)
+# 9. تخصيص معلومات النظام في واجهة Status (System) -> Ahosam-wifi-770528863
 # ==========================================
 SYS_INCLUDE_JS=$(find feeds/luci -path "*/view/status/include/10_system.js" 2>/dev/null | head -n 1)
 if [ -n "$SYS_INCLUDE_JS" ] && [ -f "$SYS_INCLUDE_JS" ]; then
@@ -281,11 +342,6 @@ if [ -n "$SYS_INCLUDE_JS" ] && [ -f "$SYS_INCLUDE_JS" ]; then
 'require fs';
 'require rpc';
 'require uci';
-
-var callLuciVersion = rpc.declare({
-	object: 'luci',
-	method: 'getVersion'
-});
 
 var callSystemBoard = rpc.declare({
 	object: 'system',
@@ -303,15 +359,13 @@ return baseclass.extend({
 	load: function() {
 		return Promise.all([
 			L.resolveDefault(callSystemBoard(), {}),
-			L.resolveDefault(callSystemInfo(), {}),
-			L.resolveDefault(callLuciVersion(), {})
+			L.resolveDefault(callSystemInfo(), {})
 		]);
 	},
 
 	render: function(data) {
-		var boardinfo   = data[0] || {},
-		    systeminfo  = data[1] || {},
-		    luciversion = (data[2] && data[2].branch) ? data[2].branch + ' ' + (data[2].revision || '') : '';
+		var boardinfo  = data[0] || {},
+		    systeminfo = data[1] || {};
 
 		var datestr = null;
 		if (systeminfo.localtime) {
@@ -356,7 +410,7 @@ return baseclass.extend({
 	}
 });
 EOF
-    echo "✅ تم تخصيص ملف 10_system.js بنجاح."
+    echo "✅ تم تخصيص ملف 10_system.js بهوية Promax-NEt بنجاح."
 fi
 
 # ==========================================
@@ -451,12 +505,11 @@ return view.extend({
 				backup_pkgs: [ E('input', { type: 'checkbox' }), true, '-k' ]
 			},
 			is_valid = res[1].valid,
-			is_forceable = res[1].forceable,
 			allow_backup = res[1].allow_backup,
 			is_too_big = (storage_size > 0 && res[0].size > storage_size),
 			body = [];
 
-			body.push(E('p', _("The flash image was uploaded. Below is the checksum and file size listed, compare them with the original file to ensure data integrity. <br /> Click 'Continue' below to start the flash procedure.")));
+			body.push(E('p', {}, _('The flash image was uploaded. Below is the checksum and file size listed, compare them with the original file to ensure data integrity. <br /> Click "Continue" below to start the flash procedure.')));
 			body.push(E('ul', {}, [
 				res[0].size ? E('li', {}, '%s: %1024.2mB'.format(_('Size'), res[0].size)) : '',
 				res[0].checksum ? E('li', {}, '%s: %s'.format(_('MD5'), res[0].checksum)) : '',
@@ -469,7 +522,7 @@ return view.extend({
 			if (!is_valid || is_too_big) {
 				body.push(E('p', { 'class': 'alert-message' }, [
 					res[2].stderr ? res[2].stderr : '',
-					res[2].stderr ? E( br ) : '',
+					res[2].stderr ? E('br') : '',
 					_('The uploaded image file does not contain a supported format. Make sure that you choose the generic image format for your platform.')
 				]));
 			}
@@ -575,14 +628,11 @@ EOF
 fi
 
 # ==========================================
-# 11. تخصيص الفوتر (Footer) لثيم Argon (Ahosam-wifi-770528863)
+# 11. تخصيص الفوتر (Footer) لثيم Argon (Promax-NEt)
 # ==========================================
 for FOOTER_FILE in \
-    "package/base-files/files/usr/lib/lua/luci/view/themes/argon/footer.htm" \
     "package/luci-theme-argon/luasrc/view/themes/argon/footer.htm" \
-    "package/luci-theme-argon/ucode/template/themes/argon/footer.ut" \
-    "feeds/luci/themes/luci-theme-argon/luasrc/view/themes/argon/footer.htm" \
-    "feeds/luci/themes/luci-theme-argon/ucode/template/themes/argon/footer.ut"
+    "feeds/luci/themes/luci-theme-argon/luasrc/view/themes/argon/footer.htm"
 do
     if [ -f "$FOOTER_FILE" ]; then
         cat << 'EOF' > "$FOOTER_FILE"
@@ -592,7 +642,7 @@ do
 </div>
 <footer class="mobile-hide" style="text-wrap: auto">
 	<div class="footer-content" style="display: flex; flex-wrap: wrap; gap: 0.5em; justify-content: end;">
-		<span style="color: #5e72e4; font-weight: 500;">Powered by Ahosam-wifi-770528863</span>
+		<span style="color: #5e72e4; font-weight: 500;">Powered by Promax-NEt</span>
 	</div>
 </footer>
 </main>
@@ -605,51 +655,38 @@ EOF
     fi
 done
 
-for FOOTER_LOGIN_FILE in \
-    "feeds/luci/themes/luci-theme-argon/ucode/template/themes/argon/footer_login.ut" \
-    "package/luci-theme-argon/ucode/template/themes/argon/footer_login.ut"
-do
-    if [ -f "$FOOTER_LOGIN_FILE" ]; then
-        cat << 'EOF' > "$FOOTER_LOGIN_FILE"
-<footer class="login-footer">
-        <div class="container">
-                <div class="row">
-                        <div class="col-lg-12 text-center">
-                                <span style="color: #5e72e4; font-weight: 500;">Powered by Ahosam-WIFI | 770528863 : للتواصل</span>
-                        </div>
-                </div>
-        </div>
-</footer>
-{% include('themes/' + theme + '/page_scripts', { is_login: true }) %}
-</body>
-</html>
-EOF
-        echo "✅ تم تخصيص $FOOTER_LOGIN_FILE بنجاح."
-    fi
-done
+# ==========================================
+# 12. تفعيل حزمة wpad و lldpd ومنع تعارض حزم wpad الأخرى
+# ==========================================
+./scripts/feeds update packages luci >/dev/null 2>&1 || true
+./scripts/feeds install lldpd luci-app-lldpd >/dev/null 2>&1 || true
 
-# ==========================================
-# 12. تفعيل دعم WLAN Roaming (802.11r/k/v) عبر wpad-mbedtls
-# ==========================================
 if [ -f .config ]; then
-    sed -i '/CONFIG_PACKAGE_wpad-basic/d' .config
-    sed -i '/CONFIG_PACKAGE_wpad-mini/d' .config
-    sed -i '/CONFIG_PACKAGE_wpad-mesh/d' .config
-    echo "# CONFIG_PACKAGE_wpad-basic-mbedtls is not set" >> .config
-    if ! grep -q "^CONFIG_PACKAGE_wpad-mbedtls=" .config; then
-        echo "CONFIG_PACKAGE_wpad-mbedtls=y" >> .config
-    fi
-    echo "✅ تم ضبط wpad-mbedtls لتفعيل ميزات 802.11r/k/v."
+    sed -i "/CONFIG_PACKAGE_wpad/d; /CONFIG_PACKAGE_lldpd/d; /CONFIG_PACKAGE_luci-app-lldpd/d" .config
+    cat << 'EOF' >> .config
+# CONFIG_PACKAGE_wpad-basic is not set
+# CONFIG_PACKAGE_wpad-basic-wolfssl is not set
+# CONFIG_PACKAGE_wpad-basic-mbedtls is not set
+# CONFIG_PACKAGE_wpad-mini is not set
+# CONFIG_PACKAGE_wpad-mesh-wolfssl is not set
+# CONFIG_PACKAGE_wpad-mesh-mbedtls is not set
+# CONFIG_PACKAGE_wpad-mbedtls is not set
+# CONFIG_PACKAGE_wpad-wolfssl is not set
+# CONFIG_PACKAGE_wpad-openssl is not set
+CONFIG_PACKAGE_wpad=y
+CONFIG_PACKAGE_lldpd=y
+CONFIG_PACKAGE_luci-app-lldpd=y
+EOF
+    echo "✅ تم ضبط حزمة wpad و lldpd ومنع التعارض."
 fi
 
 # ==========================================
 # 13. ضبط مستودعات opkg على HTTP لتفادي أخطاء شهادة TLS
 # ==========================================
-mkdir -p package/base-files/files/etc/uci-defaults
 cat << 'EOF' > package/base-files/files/etc/uci-defaults/96-fix-opkg-http
 #!/bin/sh
 if [ -f /etc/opkg/distfeeds.conf ]; then
-    sed -i 's|https://|http://|g' /etc/opkg/distfeeds.conf
+    sed -i "s|https://|http://|g" /etc/opkg/distfeeds.conf
 fi
 exit 0
 EOF
@@ -666,9 +703,9 @@ for MENU_FILE in $(find feeds/luci package -path "*/root/usr/share/luci/menu.d/*
             continue
             ;;
     esac
-    if grep -qE '"admin/system/opkg"|"admin/system/packages"|"admin/system/argon"|"admin/system/argon-config"' "$MENU_FILE"; then
+    if grep -qE "admin/system/opkg|admin/system/packages|admin/system/argon|admin/system/argon-config" "$MENU_FILE"; then
         awk '
-        /"admin\/system\/opkg":/ || /"admin\/system\/packages":/ || /"admin\/system\/argon":/ || /"admin\/system\/argon-config":/ { skip=1; braces=0 }
+        /"admin\/system\/admin\/opkg":/ || /"admin\/system\/admin\/packages":/ || /"admin\/system\/admin\/argon":/ || /"admin\/system\/admin\/argon-config":/ { skip=1; braces=0 }
         skip {
             for (i=1; i<=length($0); i++) {
                 c = substr($0, i, 1)
@@ -681,7 +718,7 @@ for MENU_FILE in $(find feeds/luci package -path "*/root/usr/share/luci/menu.d/*
         { print }
         ' "$MENU_FILE" > "$MENU_FILE.tmp" && mv "$MENU_FILE.tmp" "$MENU_FILE"
 
-        sed -i ':a;N;$!ba;s/,\s*\n\s*}/\n}/g' "$MENU_FILE" 2>/dev/null || true
+        sed -i ":a;N;\$!ba;s/,\s*\n\s*}/\n}/g" "$MENU_FILE" 2>/dev/null || true
         echo "✅ تم إخفاء العناصر المستهدفة من: $MENU_FILE"
     fi
 done
@@ -690,16 +727,15 @@ done
 # 15. دمج إضافة quicksetup_backup.tar.gz داخل الفيرموير
 # ==========================================
 mkdir -p package/base-files/files
-if [ -f "$GITHUB_WORKSPACE/quicksetup_backup.tar.gz" ]; then
+if [ -n "$GITHUB_WORKSPACE" ] && [ -f "$GITHUB_WORKSPACE/quicksetup_backup.tar.gz" ]; then
     tar -xzf "$GITHUB_WORKSPACE/quicksetup_backup.tar.gz" -C package/base-files/files/
     chmod +x package/base-files/files/etc/init.d/wizard 2>/dev/null || true
 
-    mkdir -p package/base-files/files/etc/uci-defaults
     cat << 'EOF' > package/base-files/files/etc/uci-defaults/95-enable-quicksetup
 #!/bin/sh
 if [ -x /etc/init.d/wizard ]; then
-    /etc/init.d/wizard enable 2>/dev/null || true
-    /etc/init.d/wizard start 2>/dev/null || true
+    /etc/init.d/wizard enable >/dev/null 2>&1 || true
+    /etc/init.d/wizard start >/dev/null 2>&1 || true
 fi
 rm -rf /tmp/luci-indexcache /tmp/luci-modulecache
 exit 0
@@ -711,26 +747,227 @@ else
 fi
 
 # ==========================================
-# 16. استبدال صورة argon.svg في صفحة الدخول لثيم Argon
+# 16. تسلسل إضاءة LEDs عند الإقلاع والاستقرار وضبط المؤشرات + DTS
 # ==========================================
-ARGON_SVG_SRC="$GITHUB_WORKSPACE/argon.svg"
-if [ -f "$ARGON_SVG_SRC" ]; then
-    mkdir -p package/base-files/files/www/luci-static/argon/img
-    cp -f "$ARGON_SVG_SRC" package/base-files/files/www/luci-static/argon/img/argon.svg
+echo "🔍 البحث عن ملفات DTS الخاصة باللمبات والجهاز..."
+grep -rnE "yellow:sys|yellow:net|blue:sys|blue:net" target/linux/ramips/dts/ 2>/dev/null || true
+find target/linux/ramips/dts/ -maxdepth 1 \( -iname "*6609*" -o -iname "*1806*" -o -iname "*xiaomi*" -o -iname "*h3c*" \) 2>/dev/null || true
 
-    for SVG_TARGET in \
-        "package/luci-theme-argon/htdocs/luci-static/argon/img/argon.svg" \
-        "feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/img/argon.svg" \
-        "package/luci-theme-argon/root/www/luci-static/argon/img/argon.svg" \
-        "feeds/luci/themes/luci-theme-argon/root/www/luci-static/argon/img/argon.svg"
-    do
-        if [ -f "$SVG_TARGET" ]; then
-            cp -f "$ARGON_SVG_SRC" "$SVG_TARGET"
-            echo "✅ تم تحديث: $SVG_TARGET"
-        fi
+DTS_FILES=$(grep -rnE "yellow:sys|yellow:net" target/linux/ramips/dts/ 2>/dev/null | cut -d: -f1 | sort -u)
+if [ -z "$DTS_FILES" ]; then
+    DTS_FILES=$(find target/linux/ramips/dts/ -maxdepth 1 \( -iname "*6609*" -o -iname "*1806*" -o -iname "*xiaomi*" -o -iname "*h3c*" \) 2>/dev/null | head -n 5)
+fi
+
+for dts in $DTS_FILES; do
+    if [ -f "$dts" ]; then
+        echo "🔧 تعديل ملف DTS مبكر للـ LEDs: $dts"
+        python3 - "$dts" << 'PYEOF'
+import sys, re
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8", errors="ignore") as f:
+    content = f.read()
+
+def patch_led_block(match):
+    block = match.group(0)
+    if re.search(r'label\s*=\s*"yellow:(sys|net)"', block):
+        if 'default-state' not in block:
+            block = re.sub(r'(\n\s*)(};)', r'\1\tdefault-state = "on";\1\2', block)
+        else:
+            block = re.sub(r'default-state\s*=\s*"[^"]*"', 'default-state = "on"', block)
+    return block
+
+new_content = re.sub(r'[a-zA-Z0-9_-]+\s*\{[^{}]*label\s*=\s*"yellow:(sys|net)"[^{}]*\};', patch_led_block, content, flags=re.DOTALL)
+
+if new_content != content:
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(new_content)
+    print(f'  ✅ تم تفعيل default-state = "on" للمبات البرتقالية في {path}')
+else:
+    print(f'  ℹ️ لم يتم العثور على كتلة مطابقة أو كانت معدّلة مسبقاً في {path}')
+PYEOF
+    fi
+done
+
+mkdir -p package/base-files/files/usr/bin
+cat << 'EOF' > package/base-files/files/usr/bin/promax-led-boot.sh
+#!/bin/sh
+
+LED_Y1="yellow:sys"
+LED_Y2="yellow:net"
+LED_B1="blue:sys"
+LED_B2="blue:net"
+
+max_val() {
+    local led="$1"
+    if [ -f "/sys/class/leds/$led/max_brightness" ]; then
+        cat "/sys/class/leds/$led/max_brightness"
+    else
+        echo 255
+    fi
+}
+
+set_led() {
+    local led="$1"
+    local trig="$2"
+    local val="$3"
+    [ -d "/sys/class/leds/$led" ] || return 0
+    if [ -n "$trig" ] && [ -f "/sys/class/leds/$led/trigger" ]; then
+        echo "$trig" > "/sys/class/leds/$led/trigger" 2>/dev/null || true
+    fi
+    if [ -n "$val" ] && [ -f "/sys/class/leds/$led/brightness" ]; then
+        echo "$val" > "/sys/class/leds/$led/brightness" 2>/dev/null || true
+    fi
+}
+
+wait_step() {
+    if command -v usleep >/dev/null 2>&1; then
+        usleep 350000
+    else
+        sleep 1
+    fi
+}
+
+(
+    VY1=$(max_val "$LED_Y1")
+    VY2=$(max_val "$LED_Y2")
+    VB1=$(max_val "$LED_B1")
+    VB2=$(max_val "$LED_B2")
+
+    set_led "$LED_B1" "none" 0
+    set_led "$LED_B2" "none" 0
+    set_led "$LED_Y1" "none" 0
+    set_led "$LED_Y2" "none" 0
+
+    # 1) تشغيل اللمبتين البرتقاليتين معاً بشكل ثابت لمدة 3 ثوانٍ
+    echo "$VY1" > "/sys/class/leds/$LED_Y1/brightness" 2>/dev/null || true
+    echo "$VY2" > "/sys/class/leds/$LED_Y2/brightness" 2>/dev/null || true
+    sleep 3
+
+    # 2) إطفاء اللمبة الثانية وجعل لمبة واحدة (yellow:sys) تعمل/تومض بالبرتقالي
+    echo 0 > "/sys/class/leds/$LED_Y2/brightness" 2>/dev/null || true
+    i=0
+    while [ $i -lt 5 ]; do
+        echo "$VY1" > "/sys/class/leds/$LED_Y1/brightness" 2>/dev/null || true
+        wait_step
+        echo 0 > "/sys/class/leds/$LED_Y1/brightness" 2>/dev/null || true
+        wait_step
+        i=$((i + 1))
     done
 
-    echo "✅ تم دمج صورة argon.svg بنجاح."
-else
-    echo "⚠️ تحذير: لم يتم العثور على ملف argon.svg في $GITHUB_WORKSPACE."
+    # 3) الاستقرار والعودة إلى اللون الأزرق وإطفاء البرتقالي نهائياً
+    set_led "$LED_Y1" "none" 0
+    set_led "$LED_Y2" "none" 0
+
+    set_led "$LED_B1" "default-on" "$VB1"
+    if [ ! -f "/sys/class/leds/$LED_B1/trigger" ]; then
+        echo "$VB1" > "/sys/class/leds/$LED_B1/brightness" 2>/dev/null || true
+    fi
+
+    if [ -d "/sys/class/leds/$LED_B2" ] && [ -f "/sys/class/leds/$LED_B2/trigger" ]; then
+        echo "netdev" > "/sys/class/leds/$LED_B2/trigger" 2>/dev/null || true
+        [ -f "/sys/class/leds/$LED_B2/device_name" ] && echo "br-lan" > "/sys/class/leds/$LED_B2/device_name" 2>/dev/null || true
+        [ -f "/sys/class/leds/$LED_B2/link" ] && echo 1 > "/sys/class/leds/$LED_B2/link" 2>/dev/null || true
+        [ -f "/sys/class/leds/$LED_B2/tx" ] && echo 1 > "/sys/class/leds/$LED_B2/tx" 2>/dev/null || true
+        [ -f "/sys/class/leds/$LED_B2/rx" ] && echo 1 > "/sys/class/leds/$LED_B2/rx" 2>/dev/null || true
+    else
+        echo "$VB2" > "/sys/class/leds/$LED_B2/brightness" 2>/dev/null || true
+    fi
+
+    sleep 5
+    set_led "$LED_Y1" "none" 0
+    set_led "$LED_Y2" "none" 0
+) >/dev/null 2>&1 &
+exit 0
+EOF
+chmod +x package/base-files/files/usr/bin/promax-led-boot.sh
+
+cat << 'EOF' > package/base-files/files/etc/uci-defaults/99-promax-led
+#!/bin/sh
+if uci -q get system.led_internet >/dev/null 2>&1; then
+    uci set system.led_internet.dev='br-lan'
+    uci commit system
 fi
+exit 0
+EOF
+chmod +x package/base-files/files/etc/uci-defaults/99-promax-led
+
+if [ -f package/base-files/files/etc/rc.local ]; then
+    if ! grep -q "promax-led-boot.sh" package/base-files/files/etc/rc.local; then
+        sed -i "/exit 0/i /usr/bin/promax-led-boot.sh" package/base-files/files/etc/rc.local
+    fi
+fi
+echo "✅ تم إعداد تسلسل LEDs وتعديل ملفات DTS بنجاح."
+
+# ==========================================
+# 17. إزالة علامة الصح من Enable NTP client وحذف إدخالات NTP server candidates
+# ==========================================
+cat << 'EOF' > package/base-files/files/etc/uci-defaults/94-promax-ntp-clean
+#!/bin/sh
+uci -q set system.ntp.enabled='0'
+uci -q delete system.ntp.server
+uci commit system
+/etc/init.d/sysntpd reload 2>/dev/null || true
+exit 0
+EOF
+chmod +x package/base-files/files/etc/uci-defaults/94-promax-ntp-clean
+echo "✅ تم إعداد تعطيل NTP client وحذف NTP server candidates."
+
+# ==========================================
+# 18. جعل زر WPS (و Mesh) يقوم بعمل فورمات (10s+) وتعطيل زر Reset الخلفي (بدون تعارض مع hostapd-common)
+# ==========================================
+rm -f package/base-files/files/etc/rc.button/wps \
+      package/base-files/files/etc/rc.button/mesh \
+      files/etc/rc.button/wps \
+      files/etc/rc.button/mesh
+
+mkdir -p package/base-files/files/usr/bin package/base-files/files/etc/uci-defaults package/base-files/files/etc/rc.button files/etc/rc.button
+
+cat << 'EOF' > package/base-files/files/usr/bin/promax-wps-reset.sh
+#!/bin/sh
+
+. /lib/functions.sh
+
+logger "$BUTTON pressed for $SEEN seconds"
+
+if [ "$ACTION" = "released" ]; then
+    if [ "$SEEN" -ge 10 ]; then
+        echo "FACTORY RESET via front button ($BUTTON) after ${SEEN}s" > /dev/console
+        jffs2reset -y && reboot &
+    fi
+fi
+
+return 0
+EOF
+chmod +x package/base-files/files/usr/bin/promax-wps-reset.sh
+
+cat << 'EOF' > package/base-files/files/etc/rc.button/reset
+#!/bin/sh
+
+. /lib/functions.sh
+
+logger "Rear reset button ($BUTTON) is disabled"
+return 0
+EOF
+chmod +x package/base-files/files/etc/rc.button/reset
+
+cat << 'EOF' > package/base-files/files/etc/uci-defaults/92-promax-buttons
+#!/bin/sh
+mkdir -p /etc/rc.button
+
+cat << 'BTN' > /etc/rc.button/wps
+#!/bin/sh
+exec /usr/bin/promax-wps-reset.sh
+BTN
+chmod +x /etc/rc.button/wps
+
+cp -f /etc/rc.button/wps /etc/rc.button/mesh
+chmod +x /etc/rc.button/mesh
+exit 0
+EOF
+chmod +x package/base-files/files/etc/uci-defaults/92-promax-buttons
+
+cp -f package/base-files/files/etc/rc.button/reset files/etc/rc.button/reset 2>/dev/null || true
+chmod +x files/etc/rc.button/reset 2>/dev/null || true
+
+echo "✅ تم إعداد زر WPS للفرمتة (10 ثوانٍ+) وتعطيل زر reset الخلفي بدون تعارض مع hostapd-common."
