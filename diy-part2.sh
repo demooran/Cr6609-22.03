@@ -264,8 +264,8 @@ set wireless.@wifi-device[0].disabled=0
 set wireless.@wifi-device[1].disabled=0
 set wireless.@wifi-device[0].country='PA'
 set wireless.@wifi-device[1].country='PA'
-set wireless.@wifi-device[0].txpower='36'
-set wireless.@wifi-device[1].txpower='36'
+set wireless.@wifi-device[0].txpower=36
+set wireless.@wifi-device[1].txpower=36
 commit wireless
 EOB
 wifi reload
@@ -625,6 +625,90 @@ EOF
 done
 
 # ==========================================
+# 11b. إصلاح فتح وإغلاق القائمة الجانبية في الجوال لثيم Argon
+# ==========================================
+for ARGON_CSS in \
+    "package/base-files/files/www/luci-static/argon/css/cascade.css" \
+    "package/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css" \
+    "feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css" \
+    "package/luci-theme-argon/root/www/luci-static/argon/css/cascade.css" \
+    "feeds/luci/themes/luci-theme-argon/root/www/luci-static/argon/css/cascade.css"
+do
+    if [ -f "$ARGON_CSS" ] && ! grep -q "mobile-menu-open" "$ARGON_CSS"; then
+        cat << 'EOF' >> "$ARGON_CSS"
+@media screen and (max-width:768px){
+  .main-left.mobile-menu-open{width:15rem!important;display:block!important;position:fixed!important;top:0!important;bottom:0!important;left:0!important;z-index:10001!important;overflow-y:auto!important}
+  .mobile-menu-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000}
+  .mobile-menu-backdrop.active{display:block!important}
+}
+EOF
+        echo "✅ تم إضافة CSS القائمة الجانبية للجوال إلى $ARGON_CSS"
+    fi
+done
+
+for ARGON_FOOTER in \
+    "package/base-files/files/usr/lib/lua/luci/view/themes/argon/footer.htm" \
+    "package/luci-theme-argon/luasrc/view/themes/argon/footer.htm" \
+    "feeds/luci/themes/luci-theme-argon/luasrc/view/themes/argon/footer.htm"
+do
+    if [ -f "$ARGON_FOOTER" ] && ! grep -q "mobile-menu-backdrop" "$ARGON_FOOTER"; then
+        cat << 'EOF' >> "$ARGON_FOOTER"
+<script>
+(function() {
+	if (window.innerWidth > 768) return;
+	function getSidebar() {
+		return document.getElementById('mainmenu') || document.querySelector('.main-left');
+	}
+	function ensureBackdrop() {
+		var bd = document.getElementById('mobile-menu-backdrop');
+		if (!bd) {
+			bd = document.createElement('div');
+			bd.id = 'mobile-menu-backdrop';
+			bd.className = 'mobile-menu-backdrop';
+			document.body.appendChild(bd);
+			bd.addEventListener('click', function(e) {
+				e.preventDefault();
+				e.stopPropagation();
+				setMenuState(false);
+			});
+		}
+		return bd;
+	}
+	function setMenuState(open) {
+		var sb = getSidebar();
+		if (!sb) return;
+		var bd = ensureBackdrop();
+		if (open) {
+			sb.classList.add('mobile-menu-open');
+			bd.classList.add('active');
+		} else {
+			sb.classList.remove('mobile-menu-open');
+			bd.classList.remove('active');
+		}
+	}
+	document.addEventListener('click', function(e) {
+		if (window.innerWidth > 768) return;
+		var sb = getSidebar();
+		if (!sb) return;
+		var btn = e.target && e.target.closest ? e.target.closest('a.showSide') : null;
+		if (btn) {
+			e.preventDefault();
+			e.stopPropagation();
+			setMenuState(!sb.classList.contains('mobile-menu-open'));
+			return;
+		}
+		if (sb.classList.contains('mobile-menu-open') && !sb.contains(e.target)) {
+			setMenuState(false);
+		}
+	}, true);
+})();
+</script>
+EOF
+        echo "✅ تم إضافة JS القائمة الجانبية للجوال إلى $ARGON_FOOTER"
+    fi
+done
+
+# ==========================================
 # 12. تفعيل دعم WLAN Roaming (802.11r/k/v) عبر wpad-mbedtls
 # ==========================================
 if [ -f .config ]; then
@@ -829,7 +913,7 @@ set_wan_blue_link_only() {
     echo 0 > "/sys/class/leds/$LED_B2/brightness" 2>/dev/null || true
 
     if [ -f "/sys/class/leds/$LED_B2/trigger" ]; then
-        WAN_TRIG=$(tr '\n' ' ' < "/sys/class/leds/$LED_B2/trigger" | tr -d '[]' | tr ' ' '\n' | grep -E 'mt7530.*:04:link|mt7530.*:00:link|mt7530.*:link' | head -n 1)
+        WAN_TRIG=$(tr ' ' '\n' < "/sys/class/leds/$LED_B2/trigger" | tr -d '[]' | tr '\t' '\n' | grep -E 'mt7530.*:04:link|mt7530.*:00:link|mt7530.*:link' | head -n 1)
         if [ -n "$WAN_TRIG" ]; then
             echo "$WAN_TRIG" > "/sys/class/leds/$LED_B2/trigger" 2>/dev/null || true
             return 0
