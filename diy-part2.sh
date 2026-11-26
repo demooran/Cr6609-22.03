@@ -144,7 +144,8 @@ EOF
 chmod +x package/base-files/files/etc/uci-defaults/98-argon-theme
 
 # ==========================================
-# 5. تعديل wireless.js (dBm حتى 40 + Current power + 160 MHz)
+# ==========================================
+# 5. تعديل wireless.js (dBm من 20 إلى 38 + Current power + 160 MHz)
 # ==========================================
 WIRELESS_JS=$(find feeds/luci package -name "wireless.js" -path "*network*" 2>/dev/null | head -n 1)
 
@@ -153,11 +154,11 @@ if [ -n "$WIRELESS_JS" ] && [ -f "$WIRELESS_JS" ]; then
     sed -i 's/\r//g' "$WIRELESS_JS"
 
     if grep -q "for (var i = 0; i < pwrlist.length; i++)" "$WIRELESS_JS"; then
-        sed -i 's|for (var i = 0; i < pwrlist.length; i++)|for (var i = 27; i <= 40; i++) { pwrlist.push({dbm: i, mw: Math.round(Math.pow(10, (i-30)/10) * 1000)}); }; pwrlist = pwrlist.filter((v,i,a)=>a.findIndex(t=>(t.dbm===v.dbm))===i); for (var i = 0; i < pwrlist.length; i++)|g' "$WIRELESS_JS"
-        echo "✅ تمت إضافة قيم dBm (حتى 40) بنجاح."
+        sed -i 's|for (var i = 0; i < pwrlist.length; i++)|for (var i = 20; i <= 38; i++) { pwrlist.push({dbm: i, mw: Math.round(Math.pow(10, (i-30)/10) * 1000)}); }; pwrlist = pwrlist.filter((v,i,a)=>a.findIndex(t=>(t.dbm===v.dbm))===i); for (var i = 0; i < pwrlist.length; i++)|g' "$WIRELESS_JS"
+        echo "✅ تمت إضافة قيم dBm (من 20 إلى 38) بنجاح."
     fi
 
-    sed -i 's/i<=38/i<=40/g; s/i <= 38/i <= 40/g' "$WIRELESS_JS"
+    sed -i 's/i<=40/i<=38/g; s/i <= 40/i <= 38/g' "$WIRELESS_JS"
 
     awk '
     {
@@ -173,6 +174,7 @@ if [ -n "$WIRELESS_JS" ] && [ -f "$WIRELESS_JS" ]; then
 else
     echo "⚠️ لم يتم العثور على wireless.js."
 fi
+
 
 # ==========================================
 # 6. تعطيل الخدمات (97)
