@@ -580,7 +580,7 @@ do
 </div>
 <footer class="mobile-hide" style="text-wrap: auto">
 	<div class="footer-content" style="display: flex; flex-wrap: wrap; gap: 0.5em; justify-content: end;">
-		<span style="color: #5e72e4; font-weight: 500;">Powered by Ahosam-wifi-770528863</span>
+		<span style="color: #5e72e4; font-weight: 500;">Ahosam-wifi-770528863</span>
 	</div>
 </footer>
 </main>
@@ -603,7 +603,7 @@ do
         <div class="container">
                 <div class="row">
                         <div class="col-lg-12 text-center">
-                                <span style="color: #5e72e4; font-weight: 500;">Powered by Ahosam-WIFI | 770528863 : للتواصل</span>
+                                <span style="color: #5e72e4; font-weight: 500;">Ahosam-wifi-770528863</span>
                         </div>
                 </div>
         </div>
@@ -892,3 +892,31 @@ if [ -f package/base-files/files/etc/rc.local ]; then
     fi
 fi
 echo "✅ تم إعداد تسلسل LEDs وتعديل ملفات DTS بنجاح."
+
+# ==========================================
+# 18. جلب حزمة luci-app-lldpd وتثبيتها على فرع 22.03 إن لم تكن موجودة
+# ==========================================
+if [ ! -d "feeds/luci/applications/luci-app-lldpd" ]; then
+    echo "🔍 جاري جلب luci-app-lldpd من مستودع OpenWrt..."
+    rm -rf /tmp/luci-lldpd-tmp
+    git clone --depth 1 --filter=blob:none --sparse https://git.openwrt.org/project/luci.git /tmp/luci-lldpd-tmp 2>/dev/null || true
+    if [ -d "/tmp/luci-lldpd-tmp" ]; then
+        git -C /tmp/luci-lldpd-tmp sparse-checkout set applications/luci-app-lldpd
+        if [ -d "/tmp/luci-lldpd-tmp/applications/luci-app-lldpd" ]; then
+            cp -rf /tmp/luci-lldpd-tmp/applications/luci-app-lldpd feeds/luci/applications/luci-app-lldpd
+            ./scripts/feeds update -i luci 2>/dev/null || true
+            ./scripts/feeds install -p luci luci-app-lldpd 2>/dev/null || true
+            echo "✅ تم تثبيت حزمة luci-app-lldpd في feeds/luci بنجاح."
+        else
+            echo "⚠️ تعذر استخراج مجلد luci-app-lldpd."
+        fi
+        rm -rf /tmp/luci-lldpd-tmp
+    else
+        echo "⚠️ تعذر الاتصال بمستودع luci لجلب luci-app-lldpd."
+    fi
+fi
+
+if [ -f .config ]; then
+    grep -q "^CONFIG_PACKAGE_lldpd=" .config || echo "CONFIG_PACKAGE_lldpd=y" >> .config
+    grep -q "^CONFIG_PACKAGE_luci-app-lldpd=" .config || echo "CONFIG_PACKAGE_luci-app-lldpd=y" >> .config
+fi
