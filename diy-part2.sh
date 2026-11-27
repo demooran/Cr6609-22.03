@@ -718,6 +718,28 @@ EOF
 done
 
 # ==========================================
+# 11c. استدعاء menu.js عبر L.require('menu') في header.htm لضمان بناء القوائم تلقائياً
+# ==========================================
+for ARGON_HEADER in \
+    "package/base-files/files/usr/lib/lua/luci/view/themes/argon/header.htm" \
+    "package/luci-theme-argon/luasrc/view/themes/argon/header.htm" \
+    "feeds/luci/themes/luci-theme-argon/luasrc/view/themes/argon/header.htm"
+do
+    if [ -f "$ARGON_HEADER" ] && ! grep -q "L.require('menu')" "$ARGON_HEADER"; then
+        awk '
+        {
+            print $0
+            if (index($0, "luci.js") > 0 && !done) {
+                print "<script>(function(){function initMenu(){if(window.L&&typeof L.require===\"function\"){L.require(\x27menu\x27).then(function(Menu){try{new Menu();}catch(e){}});}else{setTimeout(initMenu,50);}}if(document.readyState===\"loading\"){document.addEventListener(\"DOMContentLoaded\",initMenu);}else{initMenu();}})();</script>"
+                done=1
+            }
+        }
+        ' "$ARGON_HEADER" > "${ARGON_HEADER}.tmp" && mv "${ARGON_HEADER}.tmp" "$ARGON_HEADER"
+        echo "✅ تم إضافة استدعاء L.require('menu') إلى $ARGON_HEADER"
+    fi
+done
+
+# ==========================================
 # 12. تفعيل دعم WLAN Roaming (802.11r/k/v) عبر wpad-mbedtls
 # ==========================================
 if [ -f .config ]; then
