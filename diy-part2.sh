@@ -13,8 +13,8 @@
 # ==========================================
 # 1. تعيين اسم الجهاز (Hostname)
 # ==========================================
-sed -i 's/OpenWrt/hosam.AX/g' package/base-files/files/bin/config_generate
-sed -i 's/ImmortalWrt/hosam.AX/g' package/base-files/files/bin/config_generate
+sed -i 's/OpenWrt/promax/g' package/base-files/files/bin/config_generate
+sed -i 's/ImmortalWrt/promax/g' package/base-files/files/bin/config_generate
 
 # ==========================================
 # 2. إعدادات الواي فاي الافتراضية (تفعيل الراديو)
@@ -46,7 +46,7 @@ uci set dhcp.lan.ndp=disabled
 
 # 4. تعيين IP ثابت و DNS (بدون Gateway)
 uci set network.lan.proto='static'
-uci set network.lan.ipaddr='192.168.1.20'
+uci set network.lan.ipaddr='192.168.1.21'
 uci set network.lan.netmask='255.255.255.0'
 uci set network.lan.dns='8.8.8.8 1.1.1.1'
 uci delete network.lan.gateway 2>/dev/null || true
@@ -60,10 +60,10 @@ if uci get wireless.default_radio1 >/dev/null 2>&1; then
 fi
 
 # 6. تعيين SSID
-uci set wireless.default_radio0.ssid='hossam-WIFI.6@'
+uci set wireless.default_radio0.ssid='promax'
 uci set wireless.default_radio0.encryption='none'
 if uci get wireless.default_radio1 >/dev/null 2>&1; then
-    uci set wireless.default_radio1.ssid='hossam-WIFI.6@5G'
+    uci set wireless.default_radio1.ssid='promax@5G'
     uci set wireless.default_radio1.encryption='none'
 fi
 
@@ -154,7 +154,7 @@ if [ -n "$WIRELESS_JS" ] && [ -f "$WIRELESS_JS" ]; then
     sed -i 's/\r//g' "$WIRELESS_JS"
 
     if grep -q "for (var i = 0; i < pwrlist.length; i++)" "$WIRELESS_JS"; then
-        sed -i 's|for (var i = 0; i < pwrlist.length; i++)|for (var i = 20; i <= 38; i++) { pwrlist.push({dbm: i, mw: Math.round(Math.pow(10, (i-30)/10) * 1000)}); }; pwrlist = pwrlist.filter((v,i,a)=>a.findIndex(t=>(t.dbm===v.dbm))===i); for (var i = 0; i < pwrlist.length; i++)|g' "$WIRELESS_JS"
+        sed -i 's|for (var i = 0; i < pwrlist.length; i++)|for (var i = 20; i <= 40; i++) { pwrlist.push({dbm: i, mw: Math.round(Math.pow(10, (i-30)/10) * 1000)}); }; pwrlist = pwrlist.filter((v,i,a)=>a.findIndex(t=>(t.dbm===v.dbm))===i); for (var i = 0; i < pwrlist.length; i++)|g' "$WIRELESS_JS"
         echo "✅ تمت إضافة قيم dBm (من 20 إلى 38) بنجاح."
     fi
 
@@ -331,7 +331,7 @@ return baseclass.extend({
 			);
 		}
 
-		var customTag = 'Ahosam-wifi-770528863';
+		var customTag = 'promax-wifi-777404026';
 
 		var fields = [
 			_('Hostname'),         boardinfo.hostname,
@@ -593,7 +593,7 @@ do
             cat << 'EOF'
 <footer class="mobile-hide" style="position: fixed; bottom: 8px; right: 16px; left: auto; z-index: 10;">
 	<div>
-		<a href="https://wa.me/+967770528863" style="color: #5e72e4; font-weight: 500;">Powered by Ahosam-WIFI | للتواصل : 770528863</a>
+		<a href="https://wa.me/+967777404026" style="color: #5e72e4; font-weight: 500;">Powered by promax-WIFI | للتواصل 777404026</a>
 		<ul class="breadcrumb pull-right" id="modemenu" style="display:none"></ul>
 	</div>
 </footer>
