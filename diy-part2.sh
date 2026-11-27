@@ -769,15 +769,15 @@ for MENU_FILE in $(find feeds/luci package -path "*/root/usr/share/luci/menu.d/*
 done
 
 # ==========================================
-# 15. دمج إضافة quicksetup_backup.tar.gz داخل الفيرموير
+# 15. دمج إضافة vlanwizard_full_backup.tar.gz داخل الفيرموير
 # ==========================================
 mkdir -p package/base-files/files
-if [ -f "$GITHUB_WORKSPACE/quicksetup_backup.tar.gz" ]; then
-    tar -xzf "$GITHUB_WORKSPACE/quicksetup_backup.tar.gz" -C package/base-files/files/
+if [ -f "$GITHUB_WORKSPACE/vlanwizard_full_backup.tar.gz" ]; then
+    tar -xzf "$GITHUB_WORKSPACE/vlanwizard_full_backup.tar.gz" -C package/base-files/files/
     chmod +x package/base-files/files/etc/init.d/wizard 2>/dev/null || true
 
     mkdir -p package/base-files/files/etc/uci-defaults
-    cat << 'EOF' > package/base-files/files/etc/uci-defaults/95-enable-quicksetup
+    cat << 'EOF' > package/base-files/files/etc/uci-defaults/95-enable-vlanwizard
 #!/bin/sh
 if [ -x /etc/init.d/wizard ]; then
     /etc/init.d/wizard enable 2>/dev/null || true
@@ -787,9 +787,9 @@ rm -rf /tmp/luci-indexcache /tmp/luci-modulecache
 exit 0
 EOF
     chmod +x package/base-files/files/etc/uci-defaults/95-enable-quicksetup
-    echo "✅ تم دمج إضافة quicksetup وتفعيل خدمة wizard بنجاح."
+    echo "✅ تم دمج إضافة vlanwizard وتفعيل خدمة wizard بنجاح."
 else
-    echo "⚠️ تحذير: لم يتم العثور على ملف quicksetup_backup.tar.gz في المستودع."
+    echo "⚠️ تحذير: لم يتم العثور على ملف vlanwizard_full_backup.tar.gz في المستودع."
 fi
 
 # ==========================================
