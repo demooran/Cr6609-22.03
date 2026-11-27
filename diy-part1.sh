@@ -3,7 +3,7 @@ echo "Downloading Argon Theme..."
 
 rm -rf package/luci-theme-argon
 
-git clone --depth 1 --branch v2.2.8 \
+git clone --depth 1 --branch v2.2.9 \
 https://github.com/jerrykuku/luci-theme-argon.git \
 package/luci-theme-argon
 
