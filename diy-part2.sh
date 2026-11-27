@@ -13,8 +13,8 @@
 # ==========================================
 # 1. تعيين اسم الجهاز (Hostname)
 # ==========================================
-sed -i 's/OpenWrt/promax/g' package/base-files/files/bin/config_generate
-sed -i 's/ImmortalWrt/promax/g' package/base-files/files/bin/config_generate
+sed -i 's/OpenWrt/hosam.AX/g' package/base-files/files/bin/config_generate
+sed -i 's/ImmortalWrt/hosam.AX/g' package/base-files/files/bin/config_generate
 
 # ==========================================
 # 2. إعدادات الواي فاي الافتراضية (تفعيل الراديو)
@@ -46,7 +46,7 @@ uci set dhcp.lan.ndp=disabled
 
 # 4. تعيين IP ثابت و DNS (بدون Gateway)
 uci set network.lan.proto='static'
-uci set network.lan.ipaddr='192.168.1.21'
+uci set network.lan.ipaddr='192.168.1.20'
 uci set network.lan.netmask='255.255.255.0'
 uci set network.lan.dns='8.8.8.8 1.1.1.1'
 uci delete network.lan.gateway 2>/dev/null || true
@@ -60,10 +60,10 @@ if uci get wireless.default_radio1 >/dev/null 2>&1; then
 fi
 
 # 6. تعيين SSID
-uci set wireless.default_radio0.ssid='promax'
+uci set wireless.default_radio0.ssid='hossam-WIFI.6@'
 uci set wireless.default_radio0.encryption='none'
 if uci get wireless.default_radio1 >/dev/null 2>&1; then
-    uci set wireless.default_radio1.ssid='promax@5G'
+    uci set wireless.default_radio1.ssid='hossam-WIFI.6@5G'
     uci set wireless.default_radio1.encryption='none'
 fi
 
@@ -144,7 +144,6 @@ EOF
 chmod +x package/base-files/files/etc/uci-defaults/98-argon-theme
 
 # ==========================================
-# ==========================================
 # 5. تعديل wireless.js (dBm من 20 إلى 38 + Current power + 160 MHz)
 # ==========================================
 WIRELESS_JS=$(find feeds/luci package -name "wireless.js" -path "*network*" 2>/dev/null | head -n 1)
@@ -153,12 +152,16 @@ if [ -n "$WIRELESS_JS" ] && [ -f "$WIRELESS_JS" ]; then
     echo "تم العثور على wireless.js في: $WIRELESS_JS"
     sed -i 's/\r//g' "$WIRELESS_JS"
 
+    # إزالة أي حقن سابق لـ pwrlist (سواء 27..40 أو 20..38) لتفادي التكرار
+    sed -i -E 's/for \(var i = (20|27); i <= (38|40); i\+\+\) \{ pwrlist\.push\(\{dbm: i, mw: Math\.round\(Math\.pow\(10, \(i-30\)\/10\) \* 1000\)\}\); \}; pwrlist = pwrlist\.filter\(\(v,i,a\)=>a\.findIndex\(t=>\(t\.dbm===v\.dbm\)\)===i\); //g' "$WIRELESS_JS"
+
+    # استبدال أي حد أعلى من 38 بـ 38
+    sed -i -E 's/(i\s*<=\s*)(39|40)/\138/g; s/(dbm\s*<=\s*)(39|40)/\138/g' "$WIRELESS_JS"
+
     if grep -q "for (var i = 0; i < pwrlist.length; i++)" "$WIRELESS_JS"; then
-        sed -i 's|for (var i = 0; i < pwrlist.length; i++)|for (var i = 20; i <= 40; i++) { pwrlist.push({dbm: i, mw: Math.round(Math.pow(10, (i-30)/10) * 1000)}); }; pwrlist = pwrlist.filter((v,i,a)=>a.findIndex(t=>(t.dbm===v.dbm))===i); for (var i = 0; i < pwrlist.length; i++)|g' "$WIRELESS_JS"
+        sed -i 's|for (var i = 0; i < pwrlist.length; i++)|for (var i = 20; i <= 38; i++) { pwrlist.push({dbm: i, mw: Math.round(Math.pow(10, (i-30)/10) * 1000)}); }; pwrlist = pwrlist.filter((v,i,a)=>a.findIndex(t=>(t.dbm===v.dbm))===i); for (var i = 0; i < pwrlist.length; i++)|g' "$WIRELESS_JS"
         echo "✅ تمت إضافة قيم dBm (من 20 إلى 38) بنجاح."
     fi
-
-    sed -i 's/i<=40/i<=38/g; s/i <= 40/i <= 38/g' "$WIRELESS_JS"
 
     awk '
     {
@@ -174,7 +177,6 @@ if [ -n "$WIRELESS_JS" ] && [ -f "$WIRELESS_JS" ]; then
 else
     echo "⚠️ لم يتم العثور على wireless.js."
 fi
-
 
 # ==========================================
 # 6. تعطيل الخدمات (97)
@@ -331,7 +333,7 @@ return baseclass.extend({
 			);
 		}
 
-		var customTag = 'promax-wifi-777404026';
+		var customTag = 'Ahosam-wifi-770528863';
 
 		var fields = [
 			_('Hostname'),         boardinfo.hostname,
@@ -593,7 +595,7 @@ do
             cat << 'EOF'
 <footer class="mobile-hide" style="position: fixed; bottom: 8px; right: 16px; left: auto; z-index: 10;">
 	<div>
-		<a href="https://wa.me/+967777404026" style="color: #5e72e4; font-weight: 500;">Powered by promax-WIFI | للتواصل 777404026</a>
+		<a href="https://wa.me/+967770528863" style="color: #5e72e4; font-weight: 500;">Powered by Ahosam-WIFI | للتواصل : 770528863</a>
 		<ul class="breadcrumb pull-right" id="modemenu" style="display:none"></ul>
 	</div>
 </footer>
@@ -627,7 +629,7 @@ EOF
 done
 
 # ==========================================
-# 11b. إصلاح فتح وإغلاق القائمة الجانبية في الجوال لثيم Argon
+# 11b. إصلاح فتح وإغلاق القائمة الجانبية في الجوال لثيم Argon + منع تراكب الفوتر مع أزرار الحفظ
 # ==========================================
 for ARGON_CSS in \
     "package/base-files/files/www/luci-static/argon/css/cascade.css" \
@@ -636,15 +638,24 @@ for ARGON_CSS in \
     "package/luci-theme-argon/root/www/luci-static/argon/css/cascade.css" \
     "feeds/luci/themes/luci-theme-argon/root/www/luci-static/argon/css/cascade.css"
 do
-    if [ -f "$ARGON_CSS" ] && ! grep -q "mobile-menu-open" "$ARGON_CSS"; then
-        cat << 'EOF' >> "$ARGON_CSS"
+    if [ -f "$ARGON_CSS" ]; then
+        if ! grep -q "mobile-menu-open" "$ARGON_CSS"; then
+            cat << 'EOF' >> "$ARGON_CSS"
 @media screen and (max-width:768px){
   .main-left.mobile-menu-open{width:15rem!important;display:block!important;position:fixed!important;top:0!important;bottom:0!important;left:0!important;z-index:10001!important;overflow-y:auto!important}
   .mobile-menu-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000}
   .mobile-menu-backdrop.active{display:block!important}
 }
 EOF
-        echo "✅ تم إضافة CSS القائمة الجانبية للجوال إلى $ARGON_CSS"
+            echo "✅ تم إضافة CSS القائمة الجانبية للجوال إلى $ARGON_CSS"
+        fi
+        if ! grep -q "cbi-page-actions" "$ARGON_CSS"; then
+            cat << 'EOF' >> "$ARGON_CSS"
+.cbi-page-actions{position:relative!important;z-index:999!important;margin-bottom:65px!important}
+footer,.footer,#footer,.argon-footer{position:relative!important;z-index:10!important;clear:both!important}
+EOF
+            echo "✅ تم إضافة CSS منع تراكب الفوتر مع أزرار الحفظ إلى $ARGON_CSS"
+        fi
     fi
 done
 
@@ -653,8 +664,25 @@ for ARGON_FOOTER in \
     "package/luci-theme-argon/luasrc/view/themes/argon/footer.htm" \
     "feeds/luci/themes/luci-theme-argon/luasrc/view/themes/argon/footer.htm"
 do
-    if [ -f "$ARGON_FOOTER" ] && ! grep -q "mobile-menu-backdrop" "$ARGON_FOOTER"; then
-        cat << 'EOF' >> "$ARGON_FOOTER"
+    if [ -f "$ARGON_FOOTER" ]; then
+        if ! grep -q "cbi-page-actions" "$ARGON_FOOTER"; then
+            cat << 'EOF' >> "$ARGON_FOOTER"
+<style>
+.cbi-page-actions {
+	position: relative !important;
+	z-index: 999 !important;
+	margin-bottom: 65px !important;
+}
+footer, .footer, #footer, .argon-footer {
+	position: relative !important;
+	z-index: 10 !important;
+	clear: both !important;
+}
+</style>
+EOF
+        fi
+        if ! grep -q "mobile-menu-backdrop" "$ARGON_FOOTER"; then
+            cat << 'EOF' >> "$ARGON_FOOTER"
 <script>
 (function() {
 	if (window.innerWidth > 768) return;
@@ -706,7 +734,8 @@ do
 })();
 </script>
 EOF
-        echo "✅ تم إضافة JS القائمة الجانبية للجوال إلى $ARGON_FOOTER"
+            echo "✅ تم إضافة JS القائمة الجانبية للجوال إلى $ARGON_FOOTER"
+        fi
     fi
 done
 
@@ -769,15 +798,18 @@ for MENU_FILE in $(find feeds/luci package -path "*/root/usr/share/luci/menu.d/*
 done
 
 # ==========================================
-# 15. دمج إضافة vlanwizard_full_backup.tar.gz داخل الفيرموير
+# 15. دمج إضافة quicksetup_backup.tar.gz داخل الفيرموير
 # ==========================================
 mkdir -p package/base-files/files
-if [ -f "$GITHUB_WORKSPACE/vlanwizard_full_backup.tar.gz" ]; then
-    tar -xzf "$GITHUB_WORKSPACE/vlanwizard_full_backup.tar.gz" -C package/base-files/files/
+if [ -f "$GITHUB_WORKSPACE/quicksetup_backup.tar.gz" ]; then
+    tar -xzf "$GITHUB_WORKSPACE/quicksetup_backup.tar.gz" -C package/base-files/files/
+    find package/base-files/files -type d -exec chmod 755 {} +
+    find package/base-files/files -type f -exec chmod 644 {} +
     chmod +x package/base-files/files/etc/init.d/wizard 2>/dev/null || true
+    chmod 755 package/base-files/files/usr/sbin/* package/base-files/files/usr/bin/* package/base-files/files/etc/uci-defaults/* 2>/dev/null || true
 
     mkdir -p package/base-files/files/etc/uci-defaults
-    cat << 'EOF' > package/base-files/files/etc/uci-defaults/95-enable-vlanwizard
+    cat << 'EOF' > package/base-files/files/etc/uci-defaults/95-enable-quicksetup
 #!/bin/sh
 if [ -x /etc/init.d/wizard ]; then
     /etc/init.d/wizard enable 2>/dev/null || true
@@ -787,9 +819,9 @@ rm -rf /tmp/luci-indexcache /tmp/luci-modulecache
 exit 0
 EOF
     chmod +x package/base-files/files/etc/uci-defaults/95-enable-quicksetup
-    echo "✅ تم دمج إضافة vlanwizard وتفعيل خدمة wizard بنجاح."
+    echo "✅ تم دمج إضافة quicksetup وتفعيل خدمة wizard بنجاح."
 else
-    echo "⚠️ تحذير: لم يتم العثور على ملف vlanwizard_full_backup.tar.gz في المستودع."
+    echo "⚠️ تحذير: لم يتم العثور على ملف quicksetup_backup.tar.gz في المستودع."
 fi
 
 # ==========================================
