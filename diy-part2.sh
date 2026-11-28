@@ -25,6 +25,8 @@ if [ -f .config ]; then
 # CONFIG_PACKAGE_wpad-mini-wolfssl is not set
 # CONFIG_PACKAGE_wpad-mesh-mbedtls is not set
 # CONFIG_PACKAGE_wpad-mesh-wolfssl is not set
+# CONFIG_PACKAGE_wpad-wolfssl is not set
+# CONFIG_PACKAGE_wpad-openssl is not set
 CONFIG_PACKAGE_wpad-mbedtls=y
 EOF
 
@@ -35,6 +37,26 @@ EOF
             echo "CONFIG_PACKAGE_${EOIP_PKG}=y" >> .config
         fi
     done
+
+    make defconfig >/dev/null 2>&1 || true
+    if grep -q "^CONFIG_PACKAGE_wpad-basic-wolfssl=y" .config; then
+        sed -i '/CONFIG_PACKAGE_wpad-/d' .config
+        sed -i '/# CONFIG_PACKAGE_wpad-/d' .config
+        cat << 'EOF' >> .config
+# CONFIG_PACKAGE_wpad-basic is not set
+# CONFIG_PACKAGE_wpad-basic-mbedtls is not set
+# CONFIG_PACKAGE_wpad-basic-wolfssl is not set
+# CONFIG_PACKAGE_wpad-mini is not set
+# CONFIG_PACKAGE_wpad-mini-mbedtls is not set
+# CONFIG_PACKAGE_wpad-mini-wolfssl is not set
+# CONFIG_PACKAGE_wpad-mesh-mbedtls is not set
+# CONFIG_PACKAGE_wpad-mesh-wolfssl is not set
+# CONFIG_PACKAGE_wpad-wolfssl is not set
+# CONFIG_PACKAGE_wpad-openssl is not set
+CONFIG_PACKAGE_wpad-mbedtls=y
+EOF
+        make defconfig >/dev/null 2>&1 || true
+    fi
     echo "✅ تم ضبط حزم wpad-mbedtls و EoIP في .config."
 fi
 
@@ -737,17 +759,17 @@ EOF
         echo "✅ تم إضافة JS القائمة الجانبية للجوال إلى $ARGON_FOOTER"
     fi
 
-    if [ -f "$ARGON_FOOTER" ] && ! grep -q "margin-bottom: 65px !important" "$ARGON_FOOTER"; then
+    if [ -f "$ARGON_FOOTER" ] && ! grep -q "margin-bottom: 75px !important" "$ARGON_FOOTER"; then
         cat << 'EOF' >> "$ARGON_FOOTER"
 <style>
 .cbi-page-actions {
 	position: relative !important;
-	z-index: 999 !important;
-	margin-bottom: 65px !important;
+	z-index: 9999 !important;
+	margin-bottom: 75px !important;
 }
-footer, .footer, #footer, .argon-footer {
+footer, .footer, #footer, .argon-footer, .hosam-custom-footer {
 	position: relative !important;
-	z-index: 10 !important;
+	z-index: 5 !important;
 	clear: both !important;
 }
 </style>
@@ -782,13 +804,21 @@ done
 # 12. تأكيد تفعيل wpad-mbedtls
 # ==========================================
 if [ -f .config ]; then
-    sed -i '/CONFIG_PACKAGE_wpad-basic/d' .config
-    sed -i '/CONFIG_PACKAGE_wpad-mini/d' .config
-    sed -i '/CONFIG_PACKAGE_wpad-mesh/d' .config
-    echo "# CONFIG_PACKAGE_wpad-basic-mbedtls is not set" >> .config
-    if ! grep -q "^CONFIG_PACKAGE_wpad-mbedtls=" .config; then
-        echo "CONFIG_PACKAGE_wpad-mbedtls=y" >> .config
-    fi
+    sed -i '/CONFIG_PACKAGE_wpad-/d' .config
+    sed -i '/# CONFIG_PACKAGE_wpad-/d' .config
+    cat << 'EOF' >> .config
+# CONFIG_PACKAGE_wpad-basic is not set
+# CONFIG_PACKAGE_wpad-basic-mbedtls is not set
+# CONFIG_PACKAGE_wpad-basic-wolfssl is not set
+# CONFIG_PACKAGE_wpad-mini is not set
+# CONFIG_PACKAGE_wpad-mini-mbedtls is not set
+# CONFIG_PACKAGE_wpad-mini-wolfssl is not set
+# CONFIG_PACKAGE_wpad-mesh-mbedtls is not set
+# CONFIG_PACKAGE_wpad-mesh-wolfssl is not set
+# CONFIG_PACKAGE_wpad-wolfssl is not set
+# CONFIG_PACKAGE_wpad-openssl is not set
+CONFIG_PACKAGE_wpad-mbedtls=y
+EOF
     echo "✅ تم ضبط wpad-mbedtls لتفعيل ميزات 802.11r/k/v."
 fi
 
