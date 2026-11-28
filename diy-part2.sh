@@ -1010,50 +1010,104 @@ set_wan_blue_link_only() {
     set_led "$LED_Y1" "none" 0
     i=0
     while [ $i -lt 6 ]; do
-        echo "$VY1" > "/sys/class/leds/$LED_Y1/brightness" 2>/dev/null || true
-        wait_step
-        echo 0 > "/sys/class/leds/$LED_Y1/brightness" 2>/dev/null || true
-        wait_step
-        i=$((i + 1))
-    done
+# ==========================================
+# 20. جعل زر WPS يقوم بعمل فورمات بعد 15 ثانية وتعطيل زر Reset الخلفي
+# ==========================================
+rm -f package/base-files/files/etc/rc.button/wps \
+      package/base-files/files/etc/rc.button/mesh \
+      files/etc/rc.button/wps \
+      files/etc/rc.button/mesh
 
-    # 3) الاستقرار: إطفاء البرتقالي نهائياً، لمبة واحدة زرقاء ثابتة (blue:sys)، ولمبة WAN زرقاء (blue:net) تعمل فقط عند توصيل سلك WAN
-    set_led "$LED_Y1" "none" 0
-    set_led "$LED_Y2" "none" 0
+mkdir -p package/base-files/files/usr/bin \
+         package/base-files/files/etc/uci-defaults \
+         package/base-files/files/etc/rc.button \
+         files/etc/rc.button
 
-    set_led "$LED_B1" "default-on" "$VB1"
-    if [ ! -f "/sys/class/leds/$LED_B1/trigger" ]; then
-        echo "$VB1" > "/sys/class/leds/$LED_B1/brightness" 2>/dev/null || true
-    fi
-
-    set_wan_blue_link_only
-
-    sleep 4
-    set_led "$LED_Y1" "none" 0
-    set_led "$LED_Y2" "none" 0
-    set_led "$LED_B1" "default-on" "$VB1"
-    set_wan_blue_link_only
-) >/dev/null 2>&1 &
-exit 0
-EOF
-chmod +x package/base-files/files/usr/bin/promax-led-boot.sh
-
-cat << 'EOF' > package/base-files/files/etc/uci-defaults/99-promax-led
+cat << 'EOF' > package/base-files/files/usr/bin/promax-wps-reset.sh
 #!/bin/sh
-if uci -q get system.led_internet >/dev/null 2>&1; then
-    uci -q delete system.led_internet
-    uci commit system
-fi
-exit 0
-EOF
-chmod +x package/base-files/files/etc/uci-defaults/99-promax-led
 
-if [ -f package/base-files/files/etc/rc.local ]; then
-    if ! grep -q "promax-led-boot.sh" package/base-files/files/etc/rc.local; then
-        sed -i '/exit 0/i /usr/bin/promax-led-boot.sh' package/base-files/files/etc/rc.local
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+. /lib/functions.sh
+
+SEEN_NUM=$(printf '%s' "${SEEN:-0}" | tr -cd '0-9')
+[ -z "$SEEN_NUM" ] && SEEN_NUM=0
+
+LOCK_FILE="/tmp/promax_wps_reset.lock"
+
+if [ "$SEEN_NUM" -ge 15 ]; then
+    if [ ! -f "$LOCK_FILE" ]; then
+        : > "$LOCK_FILE"
+        echo "FACTORY RESET via front button (${BUTTON:-wps}) after ${SEEN_NUM}s (action=${ACTION:-})" > /dev/console 2>/dev/null || true
+        /sbin/jffs2reset -y && /sbin/reboot -f &
     fi
 fi
-echo "✅ تم إعداد تسلسل LEDs وتعديل ملفات DTS بنجاح."
+
+return 0
+EOF
+chmod +x package/base-files/files/usr/bin/promax-wps-reset.sh
+
+cat << 'EOF' > package/base-files/files/etc/rc.button/wps
+#!/bin/sh
+exec /usr/bin/promax-wps-reset.sh
+EOF
+chmod +x package/base-files/files/etc/rc.button/wps
+cp -f package/base-files/files/etc/rc.button/wps files/etc/rc.button/wps
+chmod +x files/etc/rc.button/wps
+
+cat << 'EOF' > package/base-files/files/etc/rc.button/reset
+#!/bin/sh
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+. /lib/functions.sh
+return 0
+EOF
+chmod +x package/base-files/files/etc/rc.button/reset
+cp -f package/base-files/files/etc/rc.button/reset files/etc/rc.button/reset
+chmod +x files/etc/rc.button/reset
+
+cat << 'EOF' > package/base-files/files/etc/uci-defaults/99-promax-buttons
+#!/bin/sh
+mkdir -p /usr/bin /etc/rc.button
+
+cat << 'SCR' > /usr/bin/promax-wps-reset.sh
+#!/bin/sh
+
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+. /lib/functions.sh
+
+SEEN_NUM=$(printf '%s' "${SEEN:-0}" | tr -cd '0-9')
+[ -z "$SEEN_NUM" ] && SEEN_NUM=0
+
+LOCK_FILE="/tmp/promax_wps_reset.lock"
+
+if [ "$SEEN_NUM" -ge 15 ]; then
+    if [ ! -f "$LOCK_FILE" ]; then
+        : > "$LOCK_FILE"
+        echo "FACTORY RESET via front button (${BUTTON:-wps}) after ${SEEN_NUM}s (action=${ACTION:-})" > /dev/console 2>/dev/null || true
+        /sbin/jffs2reset -y && /sbin/reboot -f &
+    fi
+fi
+
+return 0
+SCR
+chmod +x /usr/bin/promax-wps-reset.sh
+
+cat << 'BTN' > /etc/rc.button/wps
+#!/bin/sh
+exec /usr/bin/promax-wps-reset.sh
+BTN
+chmod +x /etc/rc.button/wps
+
+cat << 'RST' > /etc/rc.button/reset
+#!/bin/sh
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+. /lib/functions.sh
+return 0
+RST
+chmod +x /etc/rc.button/reset
+exit 0
+EOF
+chmod +x package/base-files/files/etc/uci-defaults/99-promax-buttons
+
 
 # ==========================================
 # 18. جلب حزمة luci-app-lldpd وتثبيتها + تنظيف إعدادات lldpd
