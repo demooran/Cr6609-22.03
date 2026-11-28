@@ -14,7 +14,6 @@
 # 0. ضمان وجود وتفعيل حزم wpad و EoIP في .config بدون تعارض
 # ==========================================
 if [ -f .config ]; then
-    # إزالة/تعطيل نسخ wpad المتعارضة وتفعيل wpad-mbedtls
     sed -i '/CONFIG_PACKAGE_wpad-/d' .config
     sed -i '/# CONFIG_PACKAGE_wpad-/d' .config
     cat << 'EOF' >> .config
@@ -29,7 +28,6 @@ if [ -f .config ]; then
 CONFIG_PACKAGE_wpad-mbedtls=y
 EOF
 
-    # تفعيل حزم EoIP إذا كانت متوفرة في الـ feeds
     for EOIP_PKG in eoip luci-app-eoip; do
         if grep -q "CONFIG_PACKAGE_${EOIP_PKG}" .config || find package feeds -maxdepth 4 -name "*${EOIP_PKG}*" 2>/dev/null | grep -q .; then
             sed -i "/CONFIG_PACKAGE_${EOIP_PKG}/d" .config
@@ -675,13 +673,6 @@ do
 EOF
             echo "✅ تم إضافة CSS القائمة الجانبية للجوال إلى $ARGON_CSS"
         fi
-        if ! grep -q "cbi-page-actions" "$ARGON_CSS"; then
-            cat << 'EOF' >> "$ARGON_CSS"
-.cbi-page-actions{position:relative!important;z-index:999!important;margin-bottom:65px!important}
-footer,.footer,#footer,.argon-footer{position:relative!important;z-index:10!important;clear:both!important}
-EOF
-            echo "✅ تم إضافة CSS منع تراكب الفوتر مع أزرار الحفظ إلى $ARGON_CSS"
-        fi
     fi
 done
 
@@ -744,6 +735,24 @@ do
 </script>
 EOF
         echo "✅ تم إضافة JS القائمة الجانبية للجوال إلى $ARGON_FOOTER"
+    fi
+
+    if [ -f "$ARGON_FOOTER" ] && ! grep -q "margin-bottom: 65px !important" "$ARGON_FOOTER"; then
+        cat << 'EOF' >> "$ARGON_FOOTER"
+<style>
+.cbi-page-actions {
+	position: relative !important;
+	z-index: 999 !important;
+	margin-bottom: 65px !important;
+}
+footer, .footer, #footer, .argon-footer {
+	position: relative !important;
+	z-index: 10 !important;
+	clear: both !important;
+}
+</style>
+EOF
+        echo "✅ تم إضافة أنماط منع تراكب الفوتر مع أزرار الحفظ إلى $ARGON_FOOTER"
     fi
 done
 
