@@ -11,6 +11,36 @@
 #
 
 # ==========================================
+# 0. ضمان وجود وتفعيل حزم wpad و EoIP في .config بدون تعارض
+# ==========================================
+if [ -f .config ]; then
+    # إزالة/تعطيل نسخ wpad المتعارضة وتفعيل wpad-mbedtls
+    sed -i '/CONFIG_PACKAGE_wpad-/d' .config
+    sed -i '/# CONFIG_PACKAGE_wpad-/d' .config
+    cat << 'EOF' >> .config
+# CONFIG_PACKAGE_wpad-basic is not set
+# CONFIG_PACKAGE_wpad-basic-mbedtls is not set
+# CONFIG_PACKAGE_wpad-basic-wolfssl is not set
+# CONFIG_PACKAGE_wpad-mini is not set
+# CONFIG_PACKAGE_wpad-mini-mbedtls is not set
+# CONFIG_PACKAGE_wpad-mini-wolfssl is not set
+# CONFIG_PACKAGE_wpad-mesh-mbedtls is not set
+# CONFIG_PACKAGE_wpad-mesh-wolfssl is not set
+CONFIG_PACKAGE_wpad-mbedtls=y
+EOF
+
+    # تفعيل حزم EoIP إذا كانت متوفرة في الـ feeds
+    for EOIP_PKG in eoip luci-app-eoip; do
+        if grep -q "CONFIG_PACKAGE_${EOIP_PKG}" .config || find package feeds -maxdepth 4 -name "*${EOIP_PKG}*" 2>/dev/null | grep -q .; then
+            sed -i "/CONFIG_PACKAGE_${EOIP_PKG}/d" .config
+            sed -i "/# CONFIG_PACKAGE_${EOIP_PKG}/d" .config
+            echo "CONFIG_PACKAGE_${EOIP_PKG}=y" >> .config
+        fi
+    done
+    echo "✅ تم ضبط حزم wpad-mbedtls و EoIP في .config."
+fi
+
+# ==========================================
 # 1. تعيين اسم الجهاز (Hostname)
 # ==========================================
 sed -i 's/OpenWrt/hosam.AX/g' package/base-files/files/bin/config_generate
@@ -740,7 +770,7 @@ do
 done
 
 # ==========================================
-# 12. تفعيل دعم WLAN Roaming (802.11r/k/v) عبر wpad-mbedtls
+# 12. تأكيد تفعيل wpad-mbedtls
 # ==========================================
 if [ -f .config ]; then
     sed -i '/CONFIG_PACKAGE_wpad-basic/d' .config
