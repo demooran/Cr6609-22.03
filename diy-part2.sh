@@ -19,6 +19,7 @@ if [ -f .config ]; then
     cat << 'EOF' >> .config
 # CONFIG_PACKAGE_wpad-basic is not set
 # CONFIG_PACKAGE_wpad-basic-mbedtls is not set
+# CONFIG_PACKAGE_wpad-mbedtls is not set
 # CONFIG_PACKAGE_wpad-mini is not set
 # CONFIG_PACKAGE_wpad-mini-mbedtls is not set
 # CONFIG_PACKAGE_wpad-mini-wolfssl is not set
@@ -125,7 +126,8 @@ chmod +x package/base-files/files/etc/uci-defaults/99-set-ap-mode
 
 if [ -f package/base-files/files/etc/rc.local ]; then
     if ! grep -q "promisc on" package/base-files/files/etc/rc.local; then
-        sed -i '/exit 0/i ip link set dev br-lan promisc on 2>/dev/null || true\nip link set dev eth0 promisc on 2>/dev/null || true' package/base-files/files/etc/rc.local
+        sed -i '/exit 0/i ip link set dev br-lan promisc on 2>/dev/null || true
+ip link set dev eth0 promisc on 2>/dev/null || true' package/base-files/files/etc/rc.local
     fi
 fi
 
@@ -138,11 +140,7 @@ fi
 
 if [ -f "$GITHUB_WORKSPACE/bg.jpg" ]; then
     BG_UPDATED=0
-    for BG_DIR in \
-        "package/luci-theme-argon/htdocs/luci-static/argon/background" \
-        "feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/background" \
-        "package/luci-theme-argon/root/www/luci-static/argon/background" \
-        "feeds/luci/themes/luci-theme-argon/root/www/luci-static/argon/background"
+    for BG_DIR in         "package/luci-theme-argon/htdocs/luci-static/argon/background"         "feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/background"         "package/luci-theme-argon/root/www/luci-static/argon/background"         "feeds/luci/themes/luci-theme-argon/root/www/luci-static/argon/background"
     do
         if [ -d "$BG_DIR" ]; then
             cp -f "$GITHUB_WORKSPACE/bg.jpg" "$BG_DIR/bg.jpg"
@@ -559,7 +557,7 @@ return view.extend({
 		    procmtd = rpc_replies[2] || '',
 		    procpart = rpc_replies[3] || '',
 		    procmounts = rpc_replies[4] || '',
-		    has_rootfs_data = (procmtd.match(/"rootfs_data"/) != null) || (procmounts.match("overlayfs:\\/overlay \\/ ") != null),
+		    has_rootfs_data = (procmtd.match(/"rootfs_data"/) != null) || (procmounts.match("overlayfs:\/overlay \/ ") != null),
 		    storage_size = findStorageSize(procmtd, procpart),
 		    m, s, o, ss;
 
@@ -611,10 +609,7 @@ fi
 # ==========================================
 # 11. تخصيص الفوتر (Footer) لثيم Argon (footer.htm و footer_login.htm)
 # ==========================================
-for FOOTER_FILE in \
-    "package/base-files/files/usr/lib/lua/luci/view/themes/argon/footer.htm" \
-    "package/luci-theme-argon/luasrc/view/themes/argon/footer.htm" \
-    "feeds/luci/themes/luci-theme-argon/luasrc/view/themes/argon/footer.htm"
+for FOOTER_FILE in     "package/base-files/files/usr/lib/lua/luci/view/themes/argon/footer.htm"     "package/luci-theme-argon/luasrc/view/themes/argon/footer.htm"     "feeds/luci/themes/luci-theme-argon/luasrc/view/themes/argon/footer.htm"
 do
     if [ -f "$FOOTER_FILE" ]; then
         {
@@ -633,10 +628,7 @@ EOF
     fi
 done
 
-for FOOTER_LOGIN_FILE in \
-    "package/base-files/files/usr/lib/lua/luci/view/themes/argon/footer_login.htm" \
-    "package/luci-theme-argon/luasrc/view/themes/argon/footer_login.htm" \
-    "feeds/luci/themes/luci-theme-argon/luasrc/view/themes/argon/footer_login.htm"
+for FOOTER_LOGIN_FILE in     "package/base-files/files/usr/lib/lua/luci/view/themes/argon/footer_login.htm"     "package/luci-theme-argon/luasrc/view/themes/argon/footer_login.htm"     "feeds/luci/themes/luci-theme-argon/luasrc/view/themes/argon/footer_login.htm"
 do
     if [ -f "$FOOTER_LOGIN_FILE" ]; then
         {
@@ -658,12 +650,7 @@ done
 # ==========================================
 # 11b. إصلاح فتح وإغلاق القائمة الجانبية في الجوال + منع تراكب الفوتر مع أزرار الحفظ
 # ==========================================
-for ARGON_CSS in \
-    "package/base-files/files/www/luci-static/argon/css/cascade.css" \
-    "package/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css" \
-    "feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css" \
-    "package/luci-theme-argon/root/www/luci-static/argon/css/cascade.css" \
-    "feeds/luci/themes/luci-theme-argon/root/www/luci-static/argon/css/cascade.css"
+for ARGON_CSS in     "package/base-files/files/www/luci-static/argon/css/cascade.css"     "package/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css"     "feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css"     "package/luci-theme-argon/root/www/luci-static/argon/css/cascade.css"     "feeds/luci/themes/luci-theme-argon/root/www/luci-static/argon/css/cascade.css"
 do
     if [ -f "$ARGON_CSS" ]; then
         if ! grep -q "mobile-menu-open" "$ARGON_CSS"; then
@@ -679,10 +666,7 @@ EOF
     fi
 done
 
-for ARGON_FOOTER in \
-    "package/base-files/files/usr/lib/lua/luci/view/themes/argon/footer.htm" \
-    "package/luci-theme-argon/luasrc/view/themes/argon/footer.htm" \
-    "feeds/luci/themes/luci-theme-argon/luasrc/view/themes/argon/footer.htm"
+for ARGON_FOOTER in     "package/base-files/files/usr/lib/lua/luci/view/themes/argon/footer.htm"     "package/luci-theme-argon/luasrc/view/themes/argon/footer.htm"     "feeds/luci/themes/luci-theme-argon/luasrc/view/themes/argon/footer.htm"
 do
     if [ -f "$ARGON_FOOTER" ] && ! grep -q "mobile-menu-backdrop" "$ARGON_FOOTER"; then
         cat << 'EOF' >> "$ARGON_FOOTER"
@@ -762,10 +746,7 @@ done
 # ==========================================
 # 11c. استدعاء menu.js عبر L.require('menu') في header.htm لضمان بناء القوائم تلقائياً
 # ==========================================
-for ARGON_HEADER in \
-    "package/base-files/files/usr/lib/lua/luci/view/themes/argon/header.htm" \
-    "package/luci-theme-argon/luasrc/view/themes/argon/header.htm" \
-    "feeds/luci/themes/luci-theme-argon/luasrc/view/themes/argon/header.htm"
+for ARGON_HEADER in     "package/base-files/files/usr/lib/lua/luci/view/themes/argon/header.htm"     "package/luci-theme-argon/luasrc/view/themes/argon/header.htm"     "feeds/luci/themes/luci-theme-argon/luasrc/view/themes/argon/header.htm"
 do
     if [ -f "$ARGON_HEADER" ] && ! grep -q "L.require('menu')" "$ARGON_HEADER"; then
         awk '
@@ -867,11 +848,7 @@ rm -f package/base-files/files/www/luci-static/argon/img/argon.svg 2>/dev/null |
 ARGON_SVG_SRC="$GITHUB_WORKSPACE/argon.svg"
 if [ -f "$ARGON_SVG_SRC" ]; then
     UPDATED_SVG=0
-    for SVG_TARGET in \
-        "package/luci-theme-argon/htdocs/luci-static/argon/img/argon.svg" \
-        "feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/img/argon.svg" \
-        "package/luci-theme-argon/root/www/luci-static/argon/img/argon.svg" \
-        "feeds/luci/themes/luci-theme-argon/root/www/luci-static/argon/img/argon.svg"
+    for SVG_TARGET in         "package/luci-theme-argon/htdocs/luci-static/argon/img/argon.svg"         "feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/img/argon.svg"         "package/luci-theme-argon/root/www/luci-static/argon/img/argon.svg"         "feeds/luci/themes/luci-theme-argon/root/www/luci-static/argon/img/argon.svg"
     do
         if [ -f "$SVG_TARGET" ]; then
             cp -f "$ARGON_SVG_SRC" "$SVG_TARGET"
@@ -1010,6 +987,103 @@ set_wan_blue_link_only() {
     set_led "$LED_Y1" "none" 0
     i=0
     while [ $i -lt 6 ]; do
+        echo "$VY1" > "/sys/class/leds/$LED_Y1/brightness" 2>/dev/null || true
+        wait_step
+        echo 0 > "/sys/class/leds/$LED_Y1/brightness" 2>/dev/null || true
+        wait_step
+        i=$((i + 1))
+    done
+
+    # 3) الاستقرار: إطفاء البرتقالي نهائياً، لمبة واحدة زرقاء ثابتة (blue:sys)، ولمبة WAN زرقاء (blue:net) تعمل فقط عند توصيل سلك WAN
+    set_led "$LED_Y1" "none" 0
+    set_led "$LED_Y2" "none" 0
+
+    set_led "$LED_B1" "default-on" "$VB1"
+    if [ ! -f "/sys/class/leds/$LED_B1/trigger" ]; then
+        echo "$VB1" > "/sys/class/leds/$LED_B1/brightness" 2>/dev/null || true
+    fi
+
+    set_wan_blue_link_only
+
+    sleep 4
+    set_led "$LED_Y1" "none" 0
+    set_led "$LED_Y2" "none" 0
+    set_led "$LED_B1" "default-on" "$VB1"
+    set_wan_blue_link_only
+) >/dev/null 2>&1 &
+exit 0
+EOF
+chmod +x package/base-files/files/usr/bin/promax-led-boot.sh
+
+cat << 'EOF' > package/base-files/files/etc/uci-defaults/99-promax-led
+#!/bin/sh
+if uci -q get system.led_internet >/dev/null 2>&1; then
+    uci -q delete system.led_internet
+    uci commit system
+fi
+exit 0
+EOF
+chmod +x package/base-files/files/etc/uci-defaults/99-promax-led
+
+if [ -f package/base-files/files/etc/rc.local ]; then
+    if ! grep -q "promax-led-boot.sh" package/base-files/files/etc/rc.local; then
+        sed -i '/exit 0/i /usr/bin/promax-led-boot.sh' package/base-files/files/etc/rc.local
+    fi
+fi
+echo "✅ تم إعداد تسلسل LEDs وتعديل ملفات DTS بنجاح."
+
+# ==========================================
+# 18. جلب حزمة luci-app-lldpd وتثبيتها + تنظيف إعدادات lldpd
+# ==========================================
+if [ ! -d "feeds/luci/applications/luci-app-lldpd" ]; then
+    echo "🔍 جاري جلب luci-app-lldpd من مستودع OpenWrt..."
+    rm -rf /tmp/luci-lldpd-tmp
+    git clone --depth 1 --filter=blob:none --sparse https://git.openwrt.org/project/luci.git /tmp/luci-lldpd-tmp 2>/dev/null || true
+    if [ -d "/tmp/luci-lldpd-tmp" ]; then
+        git -C /tmp/luci-lldpd-tmp sparse-checkout set applications/luci-app-lldpd
+        if [ -d "/tmp/luci-lldpd-tmp/applications/luci-app-lldpd" ]; then
+            cp -rf /tmp/luci-lldpd-tmp/applications/luci-app-lldpd feeds/luci/applications/luci-app-lldpd
+            ./scripts/feeds update -i luci 2>/dev/null || true
+            ./scripts/feeds install -p luci luci-app-lldpd 2>/dev/null || true
+            echo "✅ تم تثبيت حزمة luci-app-lldpd في feeds/luci بنجاح."
+        else
+            echo "⚠️ تعذر استخراج مجلد luci-app-lldpd."
+        fi
+        rm -rf /tmp/luci-lldpd-tmp
+    else
+        echo "⚠️ تعذر الاتصال بمستودع luci لجلب luci-app-lldpd."
+    fi
+fi
+
+if [ -f .config ]; then
+    grep -q "^CONFIG_PACKAGE_lldpd=" .config || echo "CONFIG_PACKAGE_lldpd=y" >> .config
+    grep -q "^CONFIG_PACKAGE_luci-app-lldpd=" .config || echo "CONFIG_PACKAGE_luci-app-lldpd=y" >> .config
+fi
+
+cat << 'EOF' > package/base-files/files/etc/uci-defaults/94-promax-lldpd-clean
+#!/bin/sh
+if [ -f /etc/config/lldpd ]; then
+    uci -q delete lldpd.config.interface
+    uci -q delete lldpd.config.lldp_location
+    uci commit lldpd
+fi
+exit 0
+EOF
+chmod +x package/base-files/files/etc/uci-defaults/94-promax-lldpd-clean
+
+# ==========================================
+# 19. تعطيل NTP client وحذف NTP server candidates
+# ==========================================
+cat << 'EOF' > package/base-files/files/etc/uci-defaults/94-promax-ntp-clean
+#!/bin/sh
+uci -q set system.ntp.enabled='0'
+uci -q delete system.ntp.server
+uci commit system
+/etc/init.d/sysntpd reload 2>/dev/null || true
+exit 0
+EOF
+chmod +x package/base-files/files/etc/uci-defaults/94-promax-ntp-clean
+
 # ==========================================
 # 20. جعل زر WPS يقوم بعمل فورمات بعد 15 ثانية وتعطيل زر Reset الخلفي
 # ==========================================
@@ -1107,16 +1181,3 @@ chmod +x /etc/rc.button/reset
 exit 0
 EOF
 chmod +x package/base-files/files/etc/uci-defaults/99-promax-buttons
-
-
-# ==========================================
-# 18. جلب حزمة luci-app-lldpd وتثبيتها + تنظيف إعدادات lldpd
-# ==========================================
-if [ ! -d "feeds/luci/applications/luci-app-lldpd" ]; then
-    echo "🔍 جاري جلب luci-app-lldpd من مستودع OpenWrt..."
-    rm -rf /tmp/luci-lldpd-tmp
-    git clone --depth 1 --filter=blob:none --sparse https://git.openwrt.org/project/luci.git /tmp/luci-lldpd-tmp 2>/dev/null || true
-    if [ -d "/tmp/luci-lldpd-tmp" ]; then
-        git -C /tmp/luci-lldpd-tmp sparse-checkout set applications/luci-app-lldpd
-        if [ -d "/tmp/luci-lldpd-tmp/applications/luci-app-lldpd" ]; then
-            cp -rf /tmp/luci-lldpd-
