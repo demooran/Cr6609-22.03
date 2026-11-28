@@ -11,15 +11,14 @@
 #
 
 # ==========================================
-# 0. ضمان وجود وتفعيل حزم wpad و EoIP في .config بدون تعارض
+# 0. ضمان وجود وتفعيل حزم wpad-basic-wolfssl و EoIP في .config بدون تعارض
 # ==========================================
 if [ -f .config ]; then
-    sed -i '/CONFIG_PACKAGE_wpad-/d' .config
-    sed -i '/# CONFIG_PACKAGE_wpad-/d' .config
+    sed -i '/CONFIG_PACKAGE_wpad/d' .config
+    sed -i '/# CONFIG_PACKAGE_wpad/d' .config
     cat << 'EOF' >> .config
 # CONFIG_PACKAGE_wpad-basic is not set
 # CONFIG_PACKAGE_wpad-basic-mbedtls is not set
-# CONFIG_PACKAGE_wpad-basic-wolfssl is not set
 # CONFIG_PACKAGE_wpad-mini is not set
 # CONFIG_PACKAGE_wpad-mini-mbedtls is not set
 # CONFIG_PACKAGE_wpad-mini-wolfssl is not set
@@ -27,7 +26,7 @@ if [ -f .config ]; then
 # CONFIG_PACKAGE_wpad-mesh-wolfssl is not set
 # CONFIG_PACKAGE_wpad-wolfssl is not set
 # CONFIG_PACKAGE_wpad-openssl is not set
-CONFIG_PACKAGE_wpad-mbedtls=y
+CONFIG_PACKAGE_wpad-basic-wolfssl=y
 EOF
 
     for EOIP_PKG in eoip luci-app-eoip; do
@@ -38,26 +37,7 @@ EOF
         fi
     done
 
-    make defconfig >/dev/null 2>&1 || true
-    if grep -q "^CONFIG_PACKAGE_wpad-basic-wolfssl=y" .config; then
-        sed -i '/CONFIG_PACKAGE_wpad-/d' .config
-        sed -i '/# CONFIG_PACKAGE_wpad-/d' .config
-        cat << 'EOF' >> .config
-# CONFIG_PACKAGE_wpad-basic is not set
-# CONFIG_PACKAGE_wpad-basic-mbedtls is not set
-# CONFIG_PACKAGE_wpad-basic-wolfssl is not set
-# CONFIG_PACKAGE_wpad-mini is not set
-# CONFIG_PACKAGE_wpad-mini-mbedtls is not set
-# CONFIG_PACKAGE_wpad-mini-wolfssl is not set
-# CONFIG_PACKAGE_wpad-mesh-mbedtls is not set
-# CONFIG_PACKAGE_wpad-mesh-wolfssl is not set
-# CONFIG_PACKAGE_wpad-wolfssl is not set
-# CONFIG_PACKAGE_wpad-openssl is not set
-CONFIG_PACKAGE_wpad-mbedtls=y
-EOF
-        make defconfig >/dev/null 2>&1 || true
-    fi
-    echo "✅ تم ضبط حزم wpad-mbedtls و EoIP في .config."
+    echo "✅ تم ضبط wpad-basic-wolfssl و EoIP في .config."
 fi
 
 # ==========================================
@@ -320,7 +300,6 @@ set wireless.@wifi-device[0].txpower=36
 set wireless.@wifi-device[1].txpower=36
 commit wireless
 EOB
-wifi reload
 exit 0
 EOF
 chmod +x package/base-files/files/etc/uci-defaults/99-fix-wifi-power
@@ -803,25 +782,14 @@ do
 done
 
 # ==========================================
-# 12. تأكيد تفعيل wpad-mbedtls
+# 12. التحقق من وجود wpad-basic-wolfssl في .config
 # ==========================================
 if [ -f .config ]; then
-    sed -i '/CONFIG_PACKAGE_wpad-/d' .config
-    sed -i '/# CONFIG_PACKAGE_wpad-/d' .config
-    cat << 'EOF' >> .config
-# CONFIG_PACKAGE_wpad-basic is not set
-# CONFIG_PACKAGE_wpad-basic-mbedtls is not set
-# CONFIG_PACKAGE_wpad-basic-wolfssl is not set
-# CONFIG_PACKAGE_wpad-mini is not set
-# CONFIG_PACKAGE_wpad-mini-mbedtls is not set
-# CONFIG_PACKAGE_wpad-mini-wolfssl is not set
-# CONFIG_PACKAGE_wpad-mesh-mbedtls is not set
-# CONFIG_PACKAGE_wpad-mesh-wolfssl is not set
-# CONFIG_PACKAGE_wpad-wolfssl is not set
-# CONFIG_PACKAGE_wpad-openssl is not set
-CONFIG_PACKAGE_wpad-mbedtls=y
-EOF
-    echo "✅ تم ضبط wpad-mbedtls لتفعيل ميزات 802.11r/k/v."
+    if grep -q "^CONFIG_PACKAGE_wpad-basic-wolfssl=y" .config; then
+        echo "✅ CONFIG_PACKAGE_wpad-basic-wolfssl=y مفعّل في .config."
+    else
+        echo "⚠️ تحذير: CONFIG_PACKAGE_wpad-basic-wolfssl=y غير موجود في .config؛ تأكد من إضافته قبل make defconfig."
+    fi
 fi
 
 # ==========================================
@@ -1015,7 +983,7 @@ set_wan_blue_link_only() {
     echo 0 > "/sys/class/leds/$LED_B2/brightness" 2>/dev/null || true
 
     if [ -f "/sys/class/leds/$LED_B2/trigger" ]; then
-        WAN_TRIG=$(tr ' ' '\n' < "/sys/class/leds/$LED_B2/trigger" | tr -d '[]' | tr '\t' '\n' | grep -E 'mt7530.*:04:link|mt7530.*:00:link|mt7530.*:link' | head -n 1)
+        WAN_TRIG=$(tr ' ' '\n' < "/sys/class/leds/$LED_B2/trigger" | tr -d '[]' | grep -E 'mt7530.*:04:link|mt7530.*:00:link|mt7530.*:link' | head -n 1)
         if [ -n "$WAN_TRIG" ]; then
             echo "$WAN_TRIG" > "/sys/class/leds/$LED_B2/trigger" 2>/dev/null || true
             return 0
@@ -1030,18 +998,18 @@ set_wan_blue_link_only() {
     VY2=$(max_val "$LED_Y2")
     VB1=$(max_val "$LED_B1")
 
+    # 1) تصفير الأزرق وتثبيت اللمبتين البرتقاليتين معاً لمدة 3 ثوانٍ
     set_led "$LED_B1" "none" 0
     set_led "$LED_B2" "none" 0
     set_led "$LED_Y1" "none" "$VY1"
     set_led "$LED_Y2" "none" "$VY2"
-    sleep 2
+    sleep 3
 
+    # 2) إطفاء لمبة WAN البرتقالية (yellow:net) وبقاء اللمبة الأساسية (yellow:sys) تومض كالوكالة
     set_led "$LED_Y2" "none" 0
     set_led "$LED_Y1" "none" 0
-
     i=0
-    while [ $i -lt 10 ]; do
-        set_led "$LED_Y2" "none" 0
+    while [ $i -lt 6 ]; do
         echo "$VY1" > "/sys/class/leds/$LED_Y1/brightness" 2>/dev/null || true
         wait_step
         echo 0 > "/sys/class/leds/$LED_Y1/brightness" 2>/dev/null || true
@@ -1049,6 +1017,7 @@ set_wan_blue_link_only() {
         i=$((i + 1))
     done
 
+    # 3) الاستقرار: إطفاء البرتقالي نهائياً، لمبة واحدة زرقاء ثابتة (blue:sys)، ولمبة WAN زرقاء (blue:net) تعمل فقط عند توصيل سلك WAN
     set_led "$LED_Y1" "none" 0
     set_led "$LED_Y2" "none" 0
 
@@ -1059,7 +1028,7 @@ set_wan_blue_link_only() {
 
     set_wan_blue_link_only
 
-    sleep 3
+    sleep 4
     set_led "$LED_Y1" "none" 0
     set_led "$LED_Y2" "none" 0
     set_led "$LED_B1" "default-on" "$VB1"
@@ -1096,121 +1065,4 @@ if [ ! -d "feeds/luci/applications/luci-app-lldpd" ]; then
     if [ -d "/tmp/luci-lldpd-tmp" ]; then
         git -C /tmp/luci-lldpd-tmp sparse-checkout set applications/luci-app-lldpd
         if [ -d "/tmp/luci-lldpd-tmp/applications/luci-app-lldpd" ]; then
-            cp -rf /tmp/luci-lldpd-tmp/applications/luci-app-lldpd feeds/luci/applications/luci-app-lldpd
-            ./scripts/feeds update -i luci 2>/dev/null || true
-            ./scripts/feeds install -p luci luci-app-lldpd 2>/dev/null || true
-            echo "✅ تم تثبيت حزمة luci-app-lldpd في feeds/luci بنجاح."
-        else
-            echo "⚠️ تعذر استخراج مجلد luci-app-lldpd."
-        fi
-        rm -rf /tmp/luci-lldpd-tmp
-    else
-        echo "⚠️ تعذر الاتصال بمستودع luci لجلب luci-app-lldpd."
-    fi
-fi
-
-if [ -f .config ]; then
-    grep -q "^CONFIG_PACKAGE_lldpd=" .config || echo "CONFIG_PACKAGE_lldpd=y" >> .config
-    grep -q "^CONFIG_PACKAGE_luci-app-lldpd=" .config || echo "CONFIG_PACKAGE_luci-app-lldpd=y" >> .config
-fi
-
-cat << 'EOF' > package/base-files/files/etc/uci-defaults/94-promax-lldpd-clean
-#!/bin/sh
-if [ -f /etc/config/lldpd ]; then
-    uci -q delete lldpd.config.interface
-    uci -q delete lldpd.config.lldp_location
-    uci commit lldpd
-fi
-exit 0
-EOF
-chmod +x package/base-files/files/etc/uci-defaults/94-promax-lldpd-clean
-
-# ==========================================
-# 19. تعطيل NTP client وحذف NTP server candidates
-# ==========================================
-cat << 'EOF' > package/base-files/files/etc/uci-defaults/94-promax-ntp-clean
-#!/bin/sh
-uci -q set system.ntp.enabled='0'
-uci -q delete system.ntp.server
-uci commit system
-/etc/init.d/sysntpd reload 2>/dev/null || true
-exit 0
-EOF
-chmod +x package/base-files/files/etc/uci-defaults/94-promax-ntp-clean
-
-# ==========================================
-# 20. جعل زر WPS يقوم بعمل فورمات بعد 15 ثانية وتعطيل زر Reset الخلفي
-# ==========================================
-rm -f package/base-files/files/etc/rc.button/wps \
-      package/base-files/files/etc/rc.button/mesh \
-      files/etc/rc.button/wps \
-      files/etc/rc.button/mesh
-
-mkdir -p package/base-files/files/usr/bin \
-         package/base-files/files/etc/uci-defaults \
-         package/base-files/files/etc/rc.button \
-         files/etc/rc.button
-
-cat << 'EOF' > package/base-files/files/usr/bin/promax-wps-reset.sh
-#!/bin/sh
-
-export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
-. /lib/functions.sh
-
-SEEN_NUM=$(printf '%s' "${SEEN:-0}" | tr -cd '0-9')
-[ -z "$SEEN_NUM" ] && SEEN_NUM=0
-
-LOCK_FILE="/tmp/promax_wps_reset.lock"
-
-if [ "$SEEN_NUM" -ge 15 ]; then
-    if [ ! -f "$LOCK_FILE" ]; then
-        : > "$LOCK_FILE"
-        echo "FACTORY RESET via front button (${BUTTON:-wps}) after ${SEEN_NUM}s (action=${ACTION:-})" > /dev/console 2>/dev/null || true
-        /sbin/jffs2reset -y && /sbin/reboot -f &
-    fi
-fi
-
-return 0
-EOF
-chmod +x package/base-files/files/usr/bin/promax-wps-reset.sh
-
-cat << 'EOF' > package/base-files/files/etc/rc.button/wps
-#!/bin/sh
-exec /usr/bin/promax-wps-reset.sh
-EOF
-chmod +x package/base-files/files/etc/rc.button/wps
-
-cp -f package/base-files/files/etc/rc.button/wps files/etc/rc.button/wps
-chmod +x files/etc/rc.button/wps
-
-cat << 'EOF' > package/base-files/files/etc/rc.button/reset
-#!/bin/sh
-export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
-. /lib/functions.sh
-return 0
-EOF
-chmod +x package/base-files/files/etc/rc.button/reset
-
-cp -f package/base-files/files/etc/rc.button/reset files/etc/rc.button/reset
-chmod +x files/etc/rc.button/reset
-
-cat << 'EOF' > package/base-files/files/etc/uci-defaults/92-promax-buttons
-#!/bin/sh
-mkdir -p /etc/rc.button
-
-cat << 'BTN' > /etc/rc.button/wps
-#!/bin/sh
-exec /usr/bin/promax-wps-reset.sh
-BTN
-chmod +x /etc/rc.button/wps
-
-cat << 'RST' > /etc/rc.button/reset
-#!/bin/sh
-export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
-. /lib/functions.sh
-return 0
-RST
-chmod +x /etc/rc.button/reset
-exit 0
-EOF
-chmod +x package/base-files/files/etc/uci-defaults/92-promax-buttons
+            cp -rf /tmp/luci-lldpd-
