@@ -61,10 +61,22 @@ EOF
 fi
 
 # ==========================================
-# 1. تعيين اسم الجهاز (Hostname)
+# 1. تعيين اسم الجهاز (Hostname) والمنطقة الزمنية
 # ==========================================
-sed -i 's/OpenWrt/hosam.AX/g' package/base-files/files/bin/config_generate
-sed -i 's/ImmortalWrt/hosam.AX/g' package/base-files/files/bin/config_generate
+if [ -f package/base-files/files/bin/config_generate ]; then
+    sed -i 's/OpenWrt/hosam.AX/g; s/ImmortalWrt/hosam.AX/g' package/base-files/files/bin/config_generate
+fi
+
+mkdir -p package/base-files/files/etc/uci-defaults
+cat << 'EOF' > package/base-files/files/etc/uci-defaults/93-set-hostname
+#!/bin/sh
+uci -q set system.@system[0].hostname='hosam.AX'
+uci -q set system.@system[0].zonename='Asia/Aden'
+uci -q set system.@system[0].timezone='<+03>-3'
+uci commit system
+exit 0
+EOF
+chmod +x package/base-files/files/etc/uci-defaults/93-set-hostname
 
 # ==========================================
 # 2. إعدادات الواي فاي الافتراضية (تفعيل الراديو)
@@ -77,31 +89,26 @@ fi
 # ==========================================
 # 3. إعدادات وضع الـ Access Point والجسر br-lan وتمرير VLAN مثل 110
 # ==========================================
-mkdir -p package/base-files/files/etc/uci-defaults
 cat << 'EOF' > package/base-files/files/etc/uci-defaults/99-set-ap-mode
 #!/bin/sh
 
-# 1. حذف واجهات الـ WAN
 uci delete network.wan 2>/dev/null || true
 uci delete network.wan6 2>/dev/null || true
 
-# 2. تعطيل DHCP على LAN
 uci set dhcp.lan.ignore=1
 uci set dhcp.lan.dynamicdhcp=0
 
-# 3. تعطيل IPv6
 uci set dhcp.lan.ra=disabled
 uci set dhcp.lan.dhcpv6=disabled
 uci set dhcp.lan.ndp=disabled
 
-# 4. تعيين IP ثابت و DNS (بدون Gateway)
 uci set network.lan.proto='static'
 uci set network.lan.ipaddr='192.168.1.20'
 uci set network.lan.netmask='255.255.255.0'
 uci set network.lan.dns='8.8.8.8 1.1.1.1'
 uci delete network.lan.gateway 2>/dev/null || true
+uci set network.lan.ipv6='0'
 
-# 5. عزل العملاء
 uci set wireless.default_radio0.isolate=1
 uci set wireless.default_radio0.disassoc_low_ack=0
 if uci get wireless.default_radio1 >/dev/null 2>&1; then
@@ -109,7 +116,6 @@ if uci get wireless.default_radio1 >/dev/null 2>&1; then
     uci set wireless.default_radio1.disassoc_low_ack=0
 fi
 
-# 6. تعيين SSID
 uci set wireless.default_radio0.ssid='hossam-WIFI.6@'
 uci set wireless.default_radio0.encryption='none'
 if uci get wireless.default_radio1 >/dev/null 2>&1; then
@@ -117,7 +123,6 @@ if uci get wireless.default_radio1 >/dev/null 2>&1; then
     uci set wireless.default_radio1.encryption='none'
 fi
 
-# 7. ضبط منافذ الجسر br-lan (lan1, lan2, lan3, wan) وتعطيل IPv6 على الجهاز
 for dev in $(uci show network 2>/dev/null | grep "=device" | cut -d . -f2 | cut -d = -f1); do
     if [ "$(uci -q get network.$dev.name)" = "br-lan" ]; then
         uci -q delete network.$dev.ports
@@ -128,7 +133,6 @@ for dev in $(uci show network 2>/dev/null | grep "=device" | cut -d . -f2 | cut 
     fi
 done
 
-# 8. تفعيل وضع promisc على br-lan و eth0 لضمان عدم إسقاط إطارات VLAN في MT7530 DSA
 ip link set dev br-lan promisc on 2>/dev/null || true
 ip link set dev eth0 promisc on 2>/dev/null || true
 
@@ -139,7 +143,6 @@ exit 0
 EOF
 chmod +x package/base-files/files/etc/uci-defaults/99-set-ap-mode
 
-# ضمان بقاء promisc مفعلاً على br-lan و eth0 عند إقلاع الشبكة
 if [ -f package/base-files/files/etc/rc.local ]; then
     if ! grep -q "promisc on" package/base-files/files/etc/rc.local; then
         sed -i '/exit 0/i ip link set dev br-lan promisc on 2>/dev/null || true\nip link set dev eth0 promisc on 2>/dev/null || true' package/base-files/files/etc/rc.local
@@ -175,7 +178,6 @@ else
     echo "⚠️ تحذير: لم يتم العثور على ملف bg.jpg."
 fi
 
-# جعل الثيم الافتراضي هو Argon حصرياً
 sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci/Makefile 2>/dev/null || true
 sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/modules/luci-base/Makefile 2>/dev/null || true
 
@@ -1028,14 +1030,12 @@ set_wan_blue_link_only() {
     VY2=$(max_val "$LED_Y2")
     VB1=$(max_val "$LED_B1")
 
-    # 1) تشغيل اللمبتين البرتقاليتين معاً لمدة ثانيتين فقط
     set_led "$LED_B1" "none" 0
     set_led "$LED_B2" "none" 0
     set_led "$LED_Y1" "none" "$VY1"
     set_led "$LED_Y2" "none" "$VY2"
     sleep 2
 
-    # 2) إطفاء لمبة WAN البرتقالية (yellow:net) فوراً وتثبيتها مطفأة، مع إبقاء اللمبة الأساسية (yellow:sys) تومض
     set_led "$LED_Y2" "none" 0
     set_led "$LED_Y1" "none" 0
 
@@ -1049,7 +1049,6 @@ set_wan_blue_link_only() {
         i=$((i + 1))
     done
 
-    # 3) الاستقرار: إطفاء البرتقالي نهائياً، وتشغيل الأزرق الثابت لللمبة الأساسية (blue:sys)
     set_led "$LED_Y1" "none" 0
     set_led "$LED_Y2" "none" 0
 
@@ -1088,7 +1087,7 @@ fi
 echo "✅ تم إعداد تسلسل LEDs وتعديل ملفات DTS بنجاح."
 
 # ==========================================
-# 18. جلب حزمة luci-app-lldpd وتثبيتها على فرع 22.03 إن لم تكن موجودة
+# 18. جلب حزمة luci-app-lldpd وتثبيتها + تنظيف إعدادات lldpd
 # ==========================================
 if [ ! -d "feeds/luci/applications/luci-app-lldpd" ]; then
     echo "🔍 جاري جلب luci-app-lldpd من مستودع OpenWrt..."
@@ -1114,3 +1113,104 @@ if [ -f .config ]; then
     grep -q "^CONFIG_PACKAGE_lldpd=" .config || echo "CONFIG_PACKAGE_lldpd=y" >> .config
     grep -q "^CONFIG_PACKAGE_luci-app-lldpd=" .config || echo "CONFIG_PACKAGE_luci-app-lldpd=y" >> .config
 fi
+
+cat << 'EOF' > package/base-files/files/etc/uci-defaults/94-promax-lldpd-clean
+#!/bin/sh
+if [ -f /etc/config/lldpd ]; then
+    uci -q delete lldpd.config.interface
+    uci -q delete lldpd.config.lldp_location
+    uci commit lldpd
+fi
+exit 0
+EOF
+chmod +x package/base-files/files/etc/uci-defaults/94-promax-lldpd-clean
+
+# ==========================================
+# 19. تعطيل NTP client وحذف NTP server candidates
+# ==========================================
+cat << 'EOF' > package/base-files/files/etc/uci-defaults/94-promax-ntp-clean
+#!/bin/sh
+uci -q set system.ntp.enabled='0'
+uci -q delete system.ntp.server
+uci commit system
+/etc/init.d/sysntpd reload 2>/dev/null || true
+exit 0
+EOF
+chmod +x package/base-files/files/etc/uci-defaults/94-promax-ntp-clean
+
+# ==========================================
+# 20. جعل زر WPS يقوم بعمل فورمات بعد 15 ثانية وتعطيل زر Reset الخلفي
+# ==========================================
+rm -f package/base-files/files/etc/rc.button/wps \
+      package/base-files/files/etc/rc.button/mesh \
+      files/etc/rc.button/wps \
+      files/etc/rc.button/mesh
+
+mkdir -p package/base-files/files/usr/bin \
+         package/base-files/files/etc/uci-defaults \
+         package/base-files/files/etc/rc.button \
+         files/etc/rc.button
+
+cat << 'EOF' > package/base-files/files/usr/bin/promax-wps-reset.sh
+#!/bin/sh
+
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+. /lib/functions.sh
+
+SEEN_NUM=$(printf '%s' "${SEEN:-0}" | tr -cd '0-9')
+[ -z "$SEEN_NUM" ] && SEEN_NUM=0
+
+LOCK_FILE="/tmp/promax_wps_reset.lock"
+
+if [ "$SEEN_NUM" -ge 15 ]; then
+    if [ ! -f "$LOCK_FILE" ]; then
+        : > "$LOCK_FILE"
+        echo "FACTORY RESET via front button (${BUTTON:-wps}) after ${SEEN_NUM}s (action=${ACTION:-})" > /dev/console 2>/dev/null || true
+        /sbin/jffs2reset -y && /sbin/reboot -f &
+    fi
+fi
+
+return 0
+EOF
+chmod +x package/base-files/files/usr/bin/promax-wps-reset.sh
+
+cat << 'EOF' > package/base-files/files/etc/rc.button/wps
+#!/bin/sh
+exec /usr/bin/promax-wps-reset.sh
+EOF
+chmod +x package/base-files/files/etc/rc.button/wps
+
+cp -f package/base-files/files/etc/rc.button/wps files/etc/rc.button/wps
+chmod +x files/etc/rc.button/wps
+
+cat << 'EOF' > package/base-files/files/etc/rc.button/reset
+#!/bin/sh
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+. /lib/functions.sh
+return 0
+EOF
+chmod +x package/base-files/files/etc/rc.button/reset
+
+cp -f package/base-files/files/etc/rc.button/reset files/etc/rc.button/reset
+chmod +x files/etc/rc.button/reset
+
+cat << 'EOF' > package/base-files/files/etc/uci-defaults/92-promax-buttons
+#!/bin/sh
+mkdir -p /etc/rc.button
+
+cat << 'BTN' > /etc/rc.button/wps
+#!/bin/sh
+exec /usr/bin/promax-wps-reset.sh
+BTN
+chmod +x /etc/rc.button/wps
+
+cat << 'RST' > /etc/rc.button/reset
+#!/bin/sh
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+. /lib/functions.sh
+return 0
+RST
+chmod +x /etc/rc.button/reset
+exit 0
+EOF
+chmod +x package/base-files/files/etc/uci-defaults/92-promax-buttons
